@@ -23,7 +23,8 @@ import {
 import { readFileSync } from "fs";
 
 async function main() {
-  const rpcUrl = process.env.STRATA_RPC_HTTP ?? "https://api.devnet.solana.com";
+  const rpcUrl = process.env.STRATA_RPC_HTTP;
+  if (!rpcUrl) throw new Error("set STRATA_RPC_HTTP (e.g. https://api.mainnet-beta.solana.com)");
   const programId = new PublicKey(process.env.STRATA_PROGRAM_ID!);
   const market = new PublicKey(process.env.STRATA_MARKET!);
   const keypairPath = process.env.STRATA_KEYPAIR!;
