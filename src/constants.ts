@@ -47,12 +47,19 @@ export const IxTag = {
 export type IxTag = (typeof IxTag)[keyof typeof IxTag];
 
 /// Account kind discriminator (first byte of every Strata account).
+/// **Mirrors `strata-types::AccountKind` exactly** — verified against
+/// both `program-rust/src/state/mod.rs` and `strata-types/src/lib.rs`.
+/// **MUST start at `Uninitialized = 0`** — every other variant shifts
+/// by one. Pre-v0.3.1 SDKs were missing `Uninitialized` and shipped
+/// values 0..4, causing every decoder to throw `WrongAccountKind` on
+/// real on-chain accounts.
 export const AccountKind = {
-  Market: 0,
-  UserAccount: 1,
-  Order: 2,
-  IntentRecord: 3,
-  ProtocolVault: 4,
+  Uninitialized: 0,
+  Market: 1,
+  UserAccount: 2,
+  Order: 3,
+  IntentRecord: 4,
+  ProtocolVault: 5,
 } as const;
 export type AccountKind = (typeof AccountKind)[keyof typeof AccountKind];
 
