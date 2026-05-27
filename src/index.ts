@@ -14,5 +14,8 @@ export * from "./pdas.js";
 export * from "./ix.js";
 export * from "./decode.js";
 export * from "./types.js";
+export * from "./tx.js";
+export * from "./rest.js";
+export * from "./pyth.js";
 export { MmFeedClient, type MmFeedClientOptions, type SignChallenge } from "./ws/feed.js";
 export { BookFeedClient, type BookFeedClientOptions } from "./ws/book.js";

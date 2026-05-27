@@ -71,11 +71,14 @@ client.start();
 | ------ | ----------------- |
 | `pdas` | PDA derivers: `findUserAccountPda`, `findIntentRecordPda`, `findMarketPda`, `findOrderPda`, `findProtocolVaultPda`, `findAta` |
 | `ix` | Ix builders: `postIntentIx`, `revokeIntentIx`, `placeOrderIx`, `cancelOrderIx`, `depositIx`, `withdrawIx`, `initUserAccountIx`, `pauseIx`, `unpauseIx` |
-| `decode` | Account decoders: `decodeUserAccount`, `decodeIntentRecord`, `decodeMarket`, `decodeProtocolVault` |
-| `types` | `FeedMessage`, `MmFeedMessage`, `AvlDensityLevel`, `OrderBookLevel`, `depthTotal()` helper |
+| `decode` | Account decoders: `decodeUserAccount`, `decodeOrder`, `decodeIntentRecord` (v3 incl. quoteSigner/lastUsedNonce), `decodeMarket` (v2 incl. decimals + Pyth feed), `decodeProtocolVault` |
+| `tx` | Compute Budget + Jito tip ixs: `cuLimitIx`, `cuPriceIx`, `jitoTipIx`, plus `buildAndSend()` helper |
+| `rest` | `StrataRestClient` — typed wrapper for `/health`, `/book/snapshot/{market}`, `/user/{pubkey}/fills`, etc. |
+| `pyth` | `HermesClient` — fetch latest Pyth prices; `.toStrataPrice()` static helper for the encoding conversion |
+| `types` | `FeedMessage`, `MmFeedMessage`, `AvlDensityLevel`, `OrderBookLevel`, `FillRow`, `depthTotal()` |
 | `ws/feed` | `MmFeedClient` — auth'd subscriber to `/ws/mm/{pubkey}` with handshake + reconnect |
 | `ws/book` | `BookFeedClient` — public subscriber to `/ws/feed` for market events |
-| `constants` | `IxTag`, `AccountKind`, `Side`, `OrderType`, account-size constants |
+| `constants` | `IxTag`, `AccountKind`, `Side`, `OrderType`, `COMPUTE_BUDGET_PROGRAM_ID`, account-size constants |
 
 ## Multi-market by default
 

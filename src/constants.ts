@@ -2,7 +2,7 @@
 // the market PDA + program ID into the ix/pdas helpers explicitly.
 //
 // The constants here are cluster-stable (IX tags, account kinds) plus
-// well-known third-party program IDs (ATA, SPL Token).
+// well-known third-party program IDs (ATA, SPL Token, Compute Budget).
 
 import { PublicKey } from "@solana/web3.js";
 
@@ -29,6 +29,7 @@ export const IxTag = {
   Unpause: 17,
   AdminWithdrawProtocolVault: 19,
   SettleSwapWrapped: 20,
+  SettleTradeWithSignedQuote: 31,
   PlaceOrderForOwner: 33,
 } as const;
 export type IxTag = (typeof IxTag)[keyof typeof IxTag];
@@ -59,18 +60,22 @@ export const OrderType = {
 } as const;
 export type OrderType = (typeof OrderType)[keyof typeof OrderType];
 
-/// Canonical mainnet SPL programs.
+/// Canonical Solana program IDs (cluster-stable).
 export const SPL_TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
 );
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
 );
+export const COMPUTE_BUDGET_PROGRAM_ID = new PublicKey(
+  "ComputeBudget111111111111111111111111111111",
+);
 
-/// Strata account-data byte sizes. Used by [`decode`] for length-checks.
-/// **Bumped when the on-chain Market or IntentRecord layout migrates.**
-export const MARKET_SIZE = 384; // post Audit H6+M1 migration v2
-export const INTENT_RECORD_SIZE = 360; // post-v3 (incl. quote_signer + last_used_nonce)
-export const USER_ACCOUNT_SIZE = 128;
-export const PROTOCOL_VAULT_SIZE = 144;
-export const ORDER_SIZE = 144;
+/// Strata account-data byte sizes. **Verified against the Rust source's
+/// `core::mem::size_of` assertions** — if the on-chain layout migrates,
+/// bump these in lockstep.
+export const MARKET_SIZE = 384;
+export const USER_ACCOUNT_SIZE = 160;
+export const ORDER_SIZE = 160;
+export const INTENT_RECORD_SIZE = 368;
+export const PROTOCOL_VAULT_SIZE = 120;
