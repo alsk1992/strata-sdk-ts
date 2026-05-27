@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.3.0
+
+### Fixed (CRITICAL — broken in v0.1/v0.2)
+
+- **`IxTag` enum had wrong values** — `PostIntent` was 8 but on-chain
+  is 9; `RevokeIntent` was 9 but on-chain is 10; `Pause` was 16 but
+  on-chain is 14; `Unpause` was 17 but on-chain is 15; `ClaimStake`
+  was 15 but on-chain is 18; `InitUserAccount` was 10 but on-chain
+  is 16; `RecordRfqTimeout` was 14 but on-chain is 8;
+  `SettleSwapWrapped` was 20 but on-chain is 21. Every ix the SDK
+  built routed to the WRONG on-chain handler and reverted at submit
+  time. Now matches `strata-types::ix::IxTag` exactly.
+- Added missing tag entries: `BondStake=17`, `ProposeOracle=20`,
+  `CommitOracle=22`, `SetPythAuthority=23`, `MigrateMarketV2=24`,
+  `SetSwapFee=25`, `SetMarketL2WindowMs=26`, `MigrateIntentV2=27`,
+  `RecordSettleLatency=28`, `MigrateIntentV3=29`, `SetQuoteSigner=30`,
+  `InitializeMarket=0` (was `InitMarket`).
+
+### Added
+
+- `admin.ts` — full admin ix builder surface:
+  - `adminRegisterMmIx` / `adminRemoveMmIx` / `adminSlashMmIx`
+  - `bondStakeIx` / `claimStakeIx`
+  - `crankExpiredOrdersIx` / `recordRfqTimeoutIx` (IS-9 auto-slash
+    protocol_vault account)
+  - `settleTradeIx` (with optional Pyth account for M6)
+  - `adminWithdrawProtocolVaultIx`
+  - `migrateMarketV2Ix` / `migrateIntentV2Ix` / `migrateIntentV3Ix`
+  - `setQuoteSignerIx` (64-byte secp256k1 signer for streaming lane)
+- `vault.ts` — vault-mode helpers:
+  - `wrapStrataIxForVault(opts)` wraps a Strata-native inner ix in
+    the vault's `execute_with_delegate` (tag 3) envelope. Session
+    key signs; vault PDA is the downstream signer via CPI seeds.
+  - `VaultSession` interface (owner / vaultPda / delegatePubkey /
+    delegatePda / keyId).
+- `.github/workflows/publish.yml` — npm publish on `v*` tag push,
+  with provenance + matrix-verified build.
+
+### Tests
+
+- 41/41 green (was 24). New coverage:
+  - `admin.test.ts` — 9 tests across all admin/settler/migration ixs
+    (body sizes, tag bytes, signer/writable account flags, optional
+    Pyth slot in settleTrade)
+  - `vault.test.ts` — 4 tests: tag-3 header, inner ix embedded after
+    header, 5-slot fixed account prefix + inner-key passthrough with
+    signer bit stripped, amount_in encoding
+  - `ws.test.ts` — 4 tests: MmFeedClient full handshake (mm_hello →
+    sign → mm_auth → mm_auth_ok), Fill dispatch after auth,
+    BookFeedClient message dispatch, error on bad JSON
+
 ## 0.2.0
 
 Closed the four CRITICAL gaps from the v0.1 audit:

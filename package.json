@@ -1,6 +1,6 @@
 {
   "name": "@strata/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "TypeScript SDK for Strata. Account decoders, instruction builders, PDA derivers, WS clients.",
   "license": "MIT OR Apache-2.0",
   "repository": {

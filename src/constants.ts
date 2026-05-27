@@ -6,10 +6,11 @@
 
 import { PublicKey } from "@solana/web3.js";
 
-/// IX discriminator tags. **Mirrors `strata-types::ix::IxTag` in the
-/// Rust crate** — keep in sync or settle_trade reverts at submit time.
+/// IX discriminator tags. **Mirrors `strata-types::ix::IxTag`** —
+/// verified against the Rust enum. Any mismatch routes ixs to the
+/// wrong on-chain handler and reverts at submit time.
 export const IxTag = {
-  InitMarket: 0,
+  InitializeMarket: 0,
   Deposit: 1,
   Withdraw: 2,
   PlaceOrder: 3,
@@ -17,18 +18,29 @@ export const IxTag = {
   CrankExpiredOrders: 5,
   SettleTrade: 6,
   SettleSwap: 7,
-  PostIntent: 8,
-  RevokeIntent: 9,
-  InitUserAccount: 10,
+  RecordRfqTimeout: 8,
+  PostIntent: 9,
+  RevokeIntent: 10,
   AdminRegisterMm: 11,
   AdminRemoveMm: 12,
   AdminSlashMm: 13,
-  RecordRfqTimeout: 14,
-  ClaimStake: 15,
-  Pause: 16,
-  Unpause: 17,
-  AdminWithdrawProtocolVault: 19,
-  SettleSwapWrapped: 20,
+  Pause: 14,
+  Unpause: 15,
+  InitUserAccount: 16,
+  BondStake: 17,
+  ClaimStake: 18,
+  WithdrawProtocolVault: 19,
+  ProposeOracle: 20,
+  SettleSwapWrapped: 21,
+  CommitOracle: 22,
+  SetPythAuthority: 23,
+  MigrateMarketV2: 24,
+  SetSwapFee: 25,
+  SetMarketL2WindowMs: 26,
+  MigrateIntentV2: 27,
+  RecordSettleLatency: 28,
+  MigrateIntentV3: 29,
+  SetQuoteSigner: 30,
   SettleTradeWithSignedQuote: 31,
   PlaceOrderForOwner: 33,
 } as const;
@@ -61,6 +73,7 @@ export const OrderType = {
 export type OrderType = (typeof OrderType)[keyof typeof OrderType];
 
 /// Canonical Solana program IDs (cluster-stable).
+export const SYSTEM_PROGRAM_ID = PublicKey.default;
 export const SPL_TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
 );
