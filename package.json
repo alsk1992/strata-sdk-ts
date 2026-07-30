@@ -4,7 +4,7 @@
   "description": "Official TypeScript SDK and terminal client for Strata and Sonar.",
   "type": "module",
   "license": "MIT OR Apache-2.0",
-  "homepage": "https://stratabook.app/docs/agent-sdks",
+  "homepage": "https://stratabook.org/docs/agent-sdks",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alsk1992/strata-sdk-ts.git"
