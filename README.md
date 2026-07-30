@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/readme-hero.svg" alt="Strata — One quote. The whole market." width="100%" />
+  <img src="./assets/readme-hero.svg" alt="Strata — The deepest book in DeFi." width="100%" />
 </p>
 
 <h1 align="center">Strata SDK for TypeScript</h1>
