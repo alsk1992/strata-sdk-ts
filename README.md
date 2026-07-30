@@ -1,26 +1,38 @@
-# Strata SDK for TypeScript
+<p align="center">
+  <img src="./assets/readme-hero.svg" alt="Strata — One quote. The whole market." width="100%" />
+</p>
 
-Build Strata market discovery and Sonar quotes into TypeScript applications,
-scripts, and agents.
+<h1 align="center">Strata SDK for TypeScript</h1>
 
-`@stratabook/sdk` is the official TypeScript client for Strata. It works in
-Node.js 20+ and modern browsers, includes a command-line interface, and has no
-runtime dependencies.
+<p align="center">
+  The official TypeScript client for live Strata markets and Sonar quotes.
+</p>
 
-## Quick start
+<p align="center">
+  <a href="https://stratabook.app/docs/agent-sdks">Documentation</a>
+  ·
+  <a href="https://github.com/alsk1992/strata-mcp">MCP</a>
+  ·
+  <a href="https://github.com/alsk1992/strata-sdk-rs">Rust</a>
+  ·
+  <a href="https://stratabook.app">Strata</a>
+</p>
 
-Install the SDK:
+Use `@stratabook/sdk` to discover what is trading, request a Sonar quote, or
+bring the same workflow into a terminal. It runs in Node.js 20+ and modern
+browsers with no runtime dependencies.
+
+## Start with a live quote
 
 ```sh
 npm install @stratabook/sdk
 ```
 
-Request a Sonar quote:
-
 ```ts
 import { StrataClient } from "@stratabook/sdk";
 
 const strata = new StrataClient();
+
 const quote = await strata.quote({
   market: "SOL/USDC",
   side: "sell",
@@ -29,38 +41,60 @@ const quote = await strata.quote({
 });
 
 console.log({
+  provider: quote.provider,
   output: quote.amount_out_atoms,
   minimumOutput: quote.minimum_output_atoms,
+  fee: quote.output_fee_atoms,
+  priceImpact: quote.price_impact_pct,
   expiresAt: new Date(quote.expires_at_ms),
 });
 ```
 
-Sonar is Strata's unified liquidity and matching system. One request returns the
-price, fees, minimum output, price impact, and expiry for the complete Strata
-market.
+Sonar is Strata's unified liquidity and matching system. The SDK gives it one
+market, side, amount, and tolerance; Sonar returns one decision-ready economic
+result for the whole Strata market.
 
-## Explore markets
+## Why build with it
 
-List markets and check whether quotes are currently available:
+| | |
+| --- | --- |
+| **One Sonar result** | Quote the whole available Strata market through one stable interface. |
+| **Exact economics** | Amounts stay exact from request to response—no floating-point money. |
+| **Decision-ready quotes** | Output, fees, minimum output, price impact, and expiry arrive together. |
+| **Everywhere TypeScript runs** | Use the same client in Node.js, modern browsers, scripts, and agents. |
+| **Terminal included** | Move from application code to shell automation without learning another model. |
+
+## Core workflows
+
+### Discover live markets
 
 ```ts
 const { markets } = await strata.markets();
 
-for (const market of markets) {
-  console.log(market.label, market.ready ? "ready" : "unavailable");
-}
+const ready = markets
+  .filter((market) => market.ready)
+  .map((market) => ({
+    market: market.label,
+    baseDecimals: market.base_decimals,
+    quoteDecimals: market.quote_decimals,
+  }));
+
+console.table(ready);
 ```
 
-You can also inspect the features currently available to your integration:
+### Inspect current capabilities
 
 ```ts
 const { capabilities } = await strata.capabilities();
-console.log(capabilities);
+
+for (const capability of capabilities) {
+  if (capability.default_enabled) {
+    console.log(capability.id);
+  }
+}
 ```
 
-## Use it from the terminal
-
-The package includes the `strata` command:
+### Take the same flow to a terminal
 
 ```sh
 npx -y @stratabook/sdk markets
@@ -72,7 +106,7 @@ npx -y @stratabook/sdk quote \
   --slippage-bps 50
 ```
 
-Add `--json` to any command for stable machine-readable output:
+Add `--json` when another program or agent will consume the result:
 
 ```sh
 npx -y @stratabook/sdk quote \
@@ -82,30 +116,42 @@ npx -y @stratabook/sdk quote \
   --json
 ```
 
-## Working with quotes
+## Read a Sonar quote
 
-Token amounts use atomic units—the smallest unit of each token—and are returned
-as decimal strings so they remain exact in every JavaScript environment. You
-may provide `amountInAtoms` as a `bigint` or an unsigned decimal string.
-
-Important quote fields include:
-
-| Field | Meaning |
+| Field | What you can decide from it |
 | --- | --- |
-| `amount_out_atoms` | Expected output from the quote |
-| `minimum_output_atoms` | Minimum output at your selected slippage |
+| `amount_in_consumed_atoms` | How much input the quote expects to use |
+| `amount_out_atoms` | The quoted output |
+| `minimum_output_atoms` | The output floor at your chosen slippage |
 | `input_fee_atoms` | Fee charged in the input token |
 | `output_fee_atoms` | Fee charged in the output token |
+| `reference_price` | The public reference price used for context |
 | `price_impact_pct` | Estimated price impact |
-| `expires_at_ms` | Time at which the quote expires |
+| `expires_at_ms` | When to stop using the quote and request a fresh one |
 
-Quotes are short-lived. Request a new quote after expiry and always respect
-`minimum_output_atoms`.
+Token values are unsigned decimal strings in atomic units. Pass
+`amountInAtoms` as a `bigint` or decimal string; the SDK keeps every returned
+amount as a string so precision is never silently lost.
+
+## Choose your Strata interface
+
+| You are building… | Start here |
+| --- | --- |
+| A TypeScript application or browser experience | This SDK |
+| A shell script or terminal workflow | The included `strata` CLI |
+| An AI agent that should call Strata directly | [Strata MCP](https://github.com/alsk1992/strata-mcp) |
+| A native service or Rust tool | [Strata SDK for Rust](https://github.com/alsk1992/strata-sdk-rs) |
+| Better Strata judgment inside a coding agent | [Strata Agent Skills](https://github.com/alsk1992/strata-agent-skills) |
 
 ## Configuration
 
-The client uses Strata's production API by default. You can set a custom timeout
-or point it at a controlled development environment:
+Production is the default:
+
+```ts
+const strata = new StrataClient();
+```
+
+Set a timeout or a controlled development endpoint when needed:
 
 ```ts
 const strata = new StrataClient({
@@ -114,21 +160,20 @@ const strata = new StrataClient({
 });
 ```
 
-API failures throw `StrataApiError`, including a stable error code and whether
-the request may be retried. Invalid or incompatible responses throw
-`StrataContractError`.
+`StrataApiError` includes an HTTP status, stable error code, and retryability
+hint. `StrataContractError` means the requested operation or returned data is
+not compatible with the SDK's supported contract.
 
-## Available today
+## Current release
 
-The `0.1.x` release supports market discovery and read-only Sonar quotes. It
-does not prepare, sign, or submit transactions, and it never needs wallet or
-private-key material.
+`0.1.x` covers market discovery and read-only Sonar quotes. It does not prepare,
+sign, or submit transactions and never needs wallet or private-key material.
 
-## Documentation and support
+## Resources
 
 - [Agent quick start](https://stratabook.app/docs/hello-agents)
 - [SDK documentation](https://stratabook.app/docs/agent-sdks)
-- [Report a bug or request a feature](https://github.com/alsk1992/strata-sdk-ts/issues)
-- [Report a security issue](SECURITY.md)
+- [Issues and feature requests](https://github.com/alsk1992/strata-sdk-ts/issues)
+- [Security policy](SECURITY.md)
 
 Licensed under either [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
