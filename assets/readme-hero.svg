@@ -6,17 +6,12 @@
       <stop offset="0" stop-color="#0b0e14"/>
       <stop offset="1" stop-color="#111827"/>
     </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#22d3ee" stop-opacity=".22"/>
-      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
-    </radialGradient>
     <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
       <path d="M32 0H0V32" fill="none" stroke="#94a3b8" stroke-opacity=".055"/>
     </pattern>
   </defs>
   <rect width="1200" height="320" rx="28" fill="url(#bg)"/>
   <rect width="1200" height="320" rx="28" fill="url(#grid)"/>
-  <circle cx="1015" cy="160" r="240" fill="url(#glow)"/>
 
   <g transform="translate(72 62)">
     <rect width="48" height="10" rx="5" fill="#22d3ee"/>
@@ -28,12 +23,4 @@
   <text x="72" y="176" fill="#f8fafc" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="43" font-weight="650">One quote. The whole market.</text>
   <text x="74" y="218" fill="#94a3b8" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="18" letter-spacing="2.5">TYPESCRIPT SDK  /  CLI</text>
 
-  <g transform="translate(1008 160)" fill="none">
-    <circle r="76" stroke="#22d3ee" stroke-width="2" stroke-opacity=".72"/>
-    <circle r="52" stroke="#22d3ee" stroke-width="2" stroke-opacity=".48"/>
-    <circle r="28" stroke="#22d3ee" stroke-width="2" stroke-opacity=".3"/>
-    <path d="M-76 0a76 76 0 0 1 121-61" stroke="#f8fafc" stroke-width="4" stroke-linecap="round"/>
-    <path d="M-20 48a52 52 0 0 1-28-60" stroke="#eab308" stroke-width="4" stroke-linecap="round"/>
-    <circle cx="24" cy="-15" r="6" fill="#a78bfa" stroke="none"/>
-  </g>
 </svg>
