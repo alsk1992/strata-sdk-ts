@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "contract_version": "1.0",
+  "capabilities": [
+    {
+      "id": "markets.read",
+      "introduced_in": "1.0",
+      "stability": "stable",
+      "required_scope": "market:read",
+      "risk": "read",
+      "default_enabled": true,
+      "public_sdk": true,
+      "mcp_exposure": "read"
+    },
+    {
+      "id": "books.read",
+      "introduced_in": "1.0",
+      "stability": "beta",
+      "required_scope": "market:read",
+      "risk": "read",
+      "default_enabled": false,
+      "public_sdk": false,
+      "mcp_exposure": "none"
+    },
+    {
+      "id": "quotes.read",
+      "introduced_in": "1.0",
+      "stability": "beta",
+      "required_scope": "market:read",
+      "risk": "read",
+      "default_enabled": true,
+      "public_sdk": true,
+      "mcp_exposure": "read"
+    },
+    {
+      "id": "account.read",
+      "introduced_in": "1.0",
+      "stability": "beta",
+      "required_scope": "account:read",
+      "risk": "read",
+      "default_enabled": false,
+      "public_sdk": false,
+      "mcp_exposure": "none"
+    },
+    {
+      "id": "trade.prepare",
+      "introduced_in": "1.0",
+      "stability": "beta",
+      "required_scope": "trade:prepare",
+      "risk": "prepare",
+      "default_enabled": false,
+      "public_sdk": false,
+      "mcp_exposure": "none"
+    },
+    {
+      "id": "trade.submit",
+      "introduced_in": "1.0",
+      "stability": "beta",
+      "required_scope": "trade:submit",
+      "risk": "submit",
+      "default_enabled": false,
+      "public_sdk": false,
+      "mcp_exposure": "none"
+    }
+  ]
+}

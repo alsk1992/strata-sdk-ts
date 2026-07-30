@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "contract_version": "1.0",
+  "quote_id": "sq_0123456789abcdef0123456789abcdef",
+  "server_time_ms": 1000,
+  "expires_at_ms": 4000,
+  "market_id": "11111111111111111111111111111111",
+  "side": "sell",
+  "amount_in_atoms": "10000000",
+  "amount_in_consumed_atoms": "10000000",
+  "amount_out_atoms": "1990000",
+  "minimum_output_atoms": "1980050",
+  "input_fee_atoms": "0",
+  "output_fee_atoms": "995",
+  "reference_price": "199.1",
+  "price_impact_pct": "0.0005",
+  "provider": "Sonar"
+}

@@ -1,0 +1,25 @@
+name: Contract parity
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out TypeScript SDK
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: typescript
+      - name: Check out Rust SDK
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: alsk1992/strata-sdk-rs
+          path: rust
+      - name: Compare canonical fixtures
+        run: diff -ru typescript/contract/v1 rust/crates/strata-public-contract/fixtures/v1

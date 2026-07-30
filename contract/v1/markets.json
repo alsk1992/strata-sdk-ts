@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "contract_version": "1.0",
+  "markets": [
+    {
+      "base": "So11111111111111111111111111111111111111112",
+      "quote": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "market_pda": "11111111111111111111111111111111",
+      "label": "SOL/USDC",
+      "ready": true,
+      "base_decimals": 9,
+      "quote_decimals": 6,
+      "quote_path": "/sonar/markets/sol-usdc/quote"
+    }
+  ]
+}

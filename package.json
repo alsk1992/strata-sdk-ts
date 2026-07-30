@@ -1,0 +1,49 @@
+{
+  "name": "@stratabook/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript SDK and terminal client for Strata and Sonar.",
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "homepage": "https://stratabook.app/docs/agent-sdks",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alsk1992/strata-sdk-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/alsk1992/strata-sdk-ts/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "bin": {
+    "strata": "./dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE-APACHE",
+    "LICENSE-MIT"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "pack:check": "npm pack --dry-run",
+    "ci": "npm test && npm run pack:check",
+    "prepublishOnly": "npm run ci"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.3",
+    "typescript": "~6.0.2"
+  }
+}
