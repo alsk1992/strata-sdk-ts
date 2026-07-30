@@ -5,8 +5,18 @@ import test from "node:test";
 import { StrataClient, StrataContractError } from "../src/index.js";
 
 async function fixture(name: string): Promise<Record<string, unknown>> {
-  const path = resolve(process.cwd(), "contract/v1", `${name}.json`);
-  return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+  const candidates = [
+    resolve(process.cwd(), "contract/v1", `${name}.json`),
+    resolve(process.cwd(), "../contract/v1", `${name}.json`),
+  ];
+  for (const path of candidates) {
+    try {
+      return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  throw new Error(`missing contract fixture ${name}`);
 }
 
 test("reads shared fixtures and binds a quote to its request", async () => {
