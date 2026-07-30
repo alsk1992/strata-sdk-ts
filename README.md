@@ -1,20 +1,21 @@
-# Strata TypeScript SDK
+# Strata SDK for TypeScript
 
-Official TypeScript bindings and terminal access for Strata's versioned public
-contract. The package works in Node 20+ and modern browsers with no runtime
-dependencies.
+Build Strata market discovery and Sonar quotes into TypeScript applications,
+scripts, and agents.
 
-Sonar is Strata's unified liquidity and matching system. A Sonar quote considers
-the complete eligible market and returns one composition-opaque economic result.
-The SDK does not expose private routing, venue selection, or matching internals.
+`@stratabook/sdk` is the official TypeScript client for Strata. It works in
+Node.js 20+ and modern browsers, includes a command-line interface, and has no
+runtime dependencies.
 
-## Install
+## Quick start
+
+Install the SDK:
 
 ```sh
 npm install @stratabook/sdk
 ```
 
-## Request a quote
+Request a Sonar quote:
 
 ```ts
 import { StrataClient } from "@stratabook/sdk";
@@ -27,12 +28,84 @@ const quote = await strata.quote({
   slippageBps: 50,
 });
 
-console.log(quote.amount_out_atoms);
-console.log(quote.minimum_output_atoms);
+console.log({
+  output: quote.amount_out_atoms,
+  minimumOutput: quote.minimum_output_atoms,
+  expiresAt: new Date(quote.expires_at_ms),
+});
 ```
 
-The default production API is `https://api.stratabook.app`. Pass `apiBase` only
-for a controlled test or development environment:
+Sonar is Strata's unified liquidity and matching system. One request returns the
+price, fees, minimum output, price impact, and expiry for the complete Strata
+market.
+
+## Explore markets
+
+List markets and check whether quotes are currently available:
+
+```ts
+const { markets } = await strata.markets();
+
+for (const market of markets) {
+  console.log(market.label, market.ready ? "ready" : "unavailable");
+}
+```
+
+You can also inspect the features currently available to your integration:
+
+```ts
+const { capabilities } = await strata.capabilities();
+console.log(capabilities);
+```
+
+## Use it from the terminal
+
+The package includes the `strata` command:
+
+```sh
+npx -y @stratabook/sdk markets
+
+npx -y @stratabook/sdk quote \
+  --market SOL/USDC \
+  --side sell \
+  --amount-atoms 10000000 \
+  --slippage-bps 50
+```
+
+Add `--json` to any command for stable machine-readable output:
+
+```sh
+npx -y @stratabook/sdk quote \
+  --market SOL/USDC \
+  --side sell \
+  --amount-atoms 10000000 \
+  --json
+```
+
+## Working with quotes
+
+Token amounts use atomic units—the smallest unit of each token—and are returned
+as decimal strings so they remain exact in every JavaScript environment. You
+may provide `amountInAtoms` as a `bigint` or an unsigned decimal string.
+
+Important quote fields include:
+
+| Field | Meaning |
+| --- | --- |
+| `amount_out_atoms` | Expected output from the quote |
+| `minimum_output_atoms` | Minimum output at your selected slippage |
+| `input_fee_atoms` | Fee charged in the input token |
+| `output_fee_atoms` | Fee charged in the output token |
+| `price_impact_pct` | Estimated price impact |
+| `expires_at_ms` | Time at which the quote expires |
+
+Quotes are short-lived. Request a new quote after expiry and always respect
+`minimum_output_atoms`.
+
+## Configuration
+
+The client uses Strata's production API by default. You can set a custom timeout
+or point it at a controlled development environment:
 
 ```ts
 const strata = new StrataClient({
@@ -41,47 +114,21 @@ const strata = new StrataClient({
 });
 ```
 
-## Use it from a terminal
+API failures throw `StrataApiError`, including a stable error code and whether
+the request may be retried. Invalid or incompatible responses throw
+`StrataContractError`.
 
-```sh
-npx -y @stratabook/sdk capabilities --json
-npx -y @stratabook/sdk markets --json
-npx -y @stratabook/sdk quote \
-  --market SOL/USDC \
-  --side sell \
-  --amount-atoms 10000000 \
-  --slippage-bps 50 \
-  --json
-```
+## Available today
 
-The terminal output is human-readable by default. Use `--json` for scripts and
-agents.
+The `0.1.x` release supports market discovery and read-only Sonar quotes. It
+does not prepare, sign, or submit transactions, and it never needs wallet or
+private-key material.
 
-## Contract guarantees
+## Documentation and support
 
-- Token amounts cross the public boundary as unsigned base-10 atomic strings.
-- Responses are checked against the exact supported contract version.
-- Unknown or missing fields fail closed.
-- Quotes are rebound to the requested market, side, and input amount.
-- Expiry, minimum output, fee labels, and core economic invariants are validated.
-- Product capability policy is discovered from Strata instead of hard-coded.
+- [Agent quick start](https://stratabook.app/docs/hello-agents)
+- [SDK documentation](https://stratabook.app/docs/agent-sdks)
+- [Report a bug or request a feature](https://github.com/alsk1992/strata-sdk-ts/issues)
+- [Report a security issue](SECURITY.md)
 
-`StrataApiError` reports public API failures with a status, stable code, and
-retryability hint. `StrataContractError` means a response or requested operation
-did not satisfy the supported public contract.
-
-## Safety boundary
-
-Version `0.1.x` is read-only. It can discover capabilities, list markets, and
-request short-lived Sonar quotes. It cannot prepare, sign, or submit a
-transaction and never accepts wallet, keypair, or session-key material.
-
-## Contract fixtures
-
-[`contract/v1`](contract/v1) contains the public compatibility fixtures used by
-the test suite. The same fixtures ship with the Rust contract crate. Automated
-parity checks prevent the language clients from silently diverging.
-
-Public product documentation lives at
-[stratabook.app/docs](https://stratabook.app/docs/hello-agents). Security issues
-should be reported privately as described in [SECURITY.md](SECURITY.md).
+Licensed under either [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
