@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { StrataClient } from "./client.js";
-import { DEFAULT_API_BASE, type QuoteSide } from "./types.js";
+import { DEFAULT_API_BASE, DEFAULT_SLIPPAGE_BPS, type QuoteSide } from "./types.js";
 
 interface ParsedArgs {
   command: string;
@@ -42,11 +42,12 @@ function help(): void {
 Usage:
   strata capabilities [--json]
   strata markets [--all] [--json]
-  strata quote --market SOL/USDC --side sell --amount-atoms 10000000 [--slippage-bps 50] [--json]
+  strata quote --market SOL/USDC --side sell --amount-atoms 10000000 [--slippage-bps N] [--json]
 
 Global:
   --api-base URL       Public Strata API (default: ${DEFAULT_API_BASE})
   --timeout-ms N       Request timeout (default: 10000)
+  --slippage-bps N     Optional maximum execution tolerance (default: 0)
   --json               Stable machine-readable output
 
 This release is read-only and never asks for a wallet or keypair.`);
@@ -104,7 +105,9 @@ async function run(): Promise<void> {
       market: value(parsed.flags, "market"),
       side,
       amountInAtoms: value(parsed.flags, "amount-atoms"),
-      slippageBps: Number(value(parsed.flags, "slippage-bps", "50")),
+      slippageBps: Number(
+        value(parsed.flags, "slippage-bps", String(DEFAULT_SLIPPAGE_BPS)),
+      ),
     });
     if (json) console.log(JSON.stringify(quote, null, 2));
     else {

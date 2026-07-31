@@ -37,7 +37,6 @@ const quote = await strata.quote({
   market: "SOL/USDC",
   side: "sell",
   amountInAtoms: 10_000_000n,
-  slippageBps: 50,
 });
 
 console.log({
@@ -51,8 +50,8 @@ console.log({
 ```
 
 Sonar is Strata's unified liquidity and matching system. The SDK gives it one
-market, side, amount, and tolerance; Sonar returns one decision-ready economic
-result for the whole Strata market.
+market, side, and amount; Sonar returns one decision-ready economic result for
+the whole Strata market.
 
 ## Why build with it
 
@@ -102,8 +101,7 @@ npx -y @stratabook/sdk markets
 npx -y @stratabook/sdk quote \
   --market SOL/USDC \
   --side sell \
-  --amount-atoms 10000000 \
-  --slippage-bps 50
+  --amount-atoms 10000000
 ```
 
 Add `--json` when another program or agent will consume the result:
@@ -122,7 +120,7 @@ npx -y @stratabook/sdk quote \
 | --- | --- |
 | `amount_in_consumed_atoms` | How much input the quote expects to use |
 | `amount_out_atoms` | The quoted output |
-| `minimum_output_atoms` | The output floor at your chosen slippage |
+| `minimum_output_atoms` | The lowest output allowed by the requested tolerance |
 | `input_fee_atoms` | Fee charged in the input token |
 | `output_fee_atoms` | Fee charged in the output token |
 | `reference_price` | The public reference price used for context |
@@ -132,6 +130,28 @@ npx -y @stratabook/sdk quote \
 Token values are unsigned decimal strings in atomic units. Pass
 `amountInAtoms` as a `bigint` or decimal string; the SDK keeps every returned
 amount as a string so precision is never silently lost.
+
+### Optional execution tolerance
+
+Quotes default to `0` basis points: the minimum output equals the quoted output.
+This is separate from price impact, which describes the depth consumed by the
+quote itself.
+
+Set `slippageBps` only when you are willing to accept less output in exchange
+for greater execution tolerance:
+
+```ts
+const quote = await strata.quote({
+  market: "SOL/USDC",
+  side: "sell",
+  amountInAtoms: 10_000_000n,
+  slippageBps: 25,
+});
+```
+
+The returned `minimum_output_atoms` is always the authoritative floor. A
+tolerance can affect which result is viable; it never changes what the field
+means.
 
 ## Choose your Strata interface
 

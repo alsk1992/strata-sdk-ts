@@ -1,5 +1,6 @@
 import {
   DEFAULT_API_BASE,
+  DEFAULT_SLIPPAGE_BPS,
   type CapabilityCatalog,
   type MarketsResponse,
   type QuoteRequest,
@@ -74,7 +75,7 @@ export class StrataClient {
   async quote(request: QuoteRequest): Promise<QuoteResponse> {
     const amount = normalizeAtoms(request.amountInAtoms);
     if (BigInt(amount) === 0n) throw new TypeError("amountInAtoms must be greater than zero");
-    const slippage = request.slippageBps ?? 50;
+    const slippage = request.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
     if (!Number.isSafeInteger(slippage) || slippage < 0 || slippage > 1_000) {
       throw new TypeError("slippageBps must be an integer between 0 and 1,000");
     }

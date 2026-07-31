@@ -1,6 +1,8 @@
 export const CONTRACT_SCHEMA_VERSION = 1 as const;
 export const CONTRACT_VERSION = "1.0" as const;
 export const DEFAULT_API_BASE = "https://api.stratabook.app";
+/** Exact-output default for the current read-only quote surface. */
+export const DEFAULT_SLIPPAGE_BPS = 0 as const;
 
 export type QuoteSide = "buy" | "sell";
 export type CapabilityStability = "internal" | "beta" | "stable";
@@ -49,6 +51,7 @@ export interface QuoteRequest {
   market: string;
   side: QuoteSide;
   amountInAtoms: AtomicString | bigint;
+  /** Optional maximum execution tolerance. Omission means exact output (0 bps). */
   slippageBps?: number;
 }
 
