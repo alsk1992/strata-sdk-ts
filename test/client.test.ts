@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
-import { StrataClient, StrataContractError } from "../src/index.js";
+import {
+  StrataClient,
+  StrataContractError,
+  type QuoteResponse,
+} from "../src/index.js";
 
 async function fixture(name: string): Promise<Record<string, unknown>> {
   const candidates = [
@@ -141,7 +145,7 @@ test("binds execution to minimum output and verifies before session signing", as
     ...(await fixture("quote")),
     server_time_ms: Date.now(),
     expires_at_ms: Date.now() + 10_000,
-  };
+  } as unknown as QuoteResponse;
   const quoteId = String(quote.quote_id);
   const challengeId = "sc_0123456789abcdef0123456789abcdef";
   const owner = "11111111111111111111111111111111";
@@ -199,7 +203,7 @@ test("binds execution to minimum output and verifies before session signing", as
   };
   const client = new StrataClient({ apiBase: "https://example.test", fetch });
   const result = await client.executeQuote({
-    quote: quote as never,
+    quote,
     ownerWallet: owner,
     accountSequence: 7n,
     signer: {
