@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "contract_version": "1.1",
+  "execution_id": "se_0123456789abcdef0123456789abcdef",
+  "quote_id": "sq_0123456789abcdef0123456789abcdef",
+  "market_id": "11111111111111111111111111111111",
+  "side": "sell",
+  "amount_in_atoms": "10000000",
+  "minimum_output_atoms": "1980050",
+  "transaction_base64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAEDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "recent_blockhash": "11111111111111111111111111111111",
+  "last_valid_block_height": 123456789,
+  "expires_at_ms": 4000
+}

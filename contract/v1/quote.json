@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_version": "1.0",
+  "contract_version": "1.1",
   "quote_id": "sq_0123456789abcdef0123456789abcdef",
   "server_time_ms": 1000,
   "expires_at_ms": 4000,

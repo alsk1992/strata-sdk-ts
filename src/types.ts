@@ -1,5 +1,5 @@
 export const CONTRACT_SCHEMA_VERSION = 1 as const;
-export const CONTRACT_VERSION = "1.0" as const;
+export const CONTRACT_VERSION = "1.1" as const;
 export const DEFAULT_API_BASE = "https://api.stratabook.app";
 /** Exact-output default for the current read-only quote surface. */
 export const DEFAULT_SLIPPAGE_BPS = 0 as const;
@@ -72,6 +72,83 @@ export interface QuoteResponse {
   reference_price: string;
   price_impact_pct: string;
   provider: "Sonar";
+}
+
+export interface ExecutionChallengeResponse {
+  schema_version: typeof CONTRACT_SCHEMA_VERSION;
+  contract_version: typeof CONTRACT_VERSION;
+  challenge_id: string;
+  quote_id: string;
+  market_id: string;
+  side: QuoteSide;
+  amount_in_atoms: AtomicString;
+  minimum_output_atoms: AtomicString;
+  authorization_payload_base64: string;
+  server_time_ms: number;
+  expires_at_ms: number;
+}
+
+export interface ExecutionPrepareResponse {
+  schema_version: typeof CONTRACT_SCHEMA_VERSION;
+  contract_version: typeof CONTRACT_VERSION;
+  execution_id: string;
+  quote_id: string;
+  market_id: string;
+  side: QuoteSide;
+  amount_in_atoms: AtomicString;
+  minimum_output_atoms: AtomicString;
+  transaction_base64: string;
+  recent_blockhash: string;
+  last_valid_block_height: number;
+  expires_at_ms: number;
+}
+
+export interface ExecutionSubmitResponse {
+  schema_version: typeof CONTRACT_SCHEMA_VERSION;
+  contract_version: typeof CONTRACT_VERSION;
+  execution_id: string;
+  signature: string;
+  status: "submitted";
+}
+
+export interface ExecutionVerificationContext {
+  quote: QuoteResponse;
+  challenge: ExecutionChallengeResponse;
+  prepared: ExecutionPrepareResponse;
+  ownerWallet: string;
+  sessionPublicKey: string;
+}
+
+/**
+ * A non-exportable Vault session adapter. The SDK never accepts, stores, or
+ * transmits the corresponding private key.
+ */
+export interface StrataSessionSigner {
+  /** Base58 Ed25519 public key registered as the Vault delegate. */
+  publicKey: string;
+  /** Sign one exact, SDK-validated authorization payload. */
+  signMessage(message: Uint8Array): Promise<Uint8Array>;
+  /** Add only the session signature to the already-verified transaction. */
+  signTransaction(transactionBase64: string): Promise<string>;
+}
+
+export interface ExecuteQuoteRequest {
+  quote: QuoteResponse;
+  ownerWallet: string;
+  accountSequence: AtomicString | bigint;
+  signer: StrataSessionSigner;
+  /**
+   * Mandatory deny-by-default transaction verifier. It must reject any
+   * transaction that is not acceptable for this exact Vault session.
+   */
+  verifyTransaction(
+    context: ExecutionVerificationContext,
+  ): void | Promise<void>;
+  /**
+   * Retry key for this exact execution. Reuse it after transport failures.
+   * The opaque execution ID is used when omitted.
+   */
+  idempotencyKey?: string;
 }
 
 export interface ErrorDetail {

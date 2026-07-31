@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
-import { StrataClient, StrataContractError } from "../src/index.js";
+import {
+  StrataClient,
+  StrataContractError,
+  type QuoteResponse,
+} from "../src/index.js";
 
 async function fixture(name: string): Promise<Record<string, unknown>> {
   const candidates = [
@@ -134,3 +138,98 @@ test("refuses a discovered operation outside the public Sonar surface", async ()
     StrataContractError,
   );
 });
+
+test("binds execution to minimum output and verifies before session signing", async () => {
+  const markets = await fixture("markets");
+  const quote = {
+    ...(await fixture("quote")),
+    server_time_ms: Date.now(),
+    expires_at_ms: Date.now() + 10_000,
+  } as unknown as QuoteResponse;
+  const quoteId = String(quote.quote_id);
+  const challengeId = "sc_0123456789abcdef0123456789abcdef";
+  const owner = "11111111111111111111111111111111";
+  const payload = Buffer.concat([
+    Buffer.from("strata-sonar-execution:v1\0"),
+    Buffer.alloc(32),
+    Buffer.from(quoteId),
+    Buffer.alloc(32),
+    Buffer.alloc(32),
+    Buffer.from([1]),
+    u64(String(quote.amount_in_atoms)),
+    u64(String(quote.minimum_output_atoms)),
+    u64("7"),
+    u64("0"),
+    Buffer.alloc(32),
+    u64("123456789"),
+    u64(String(quote.expires_at_ms)),
+    Buffer.from(challengeId.slice(3), "hex"),
+    Buffer.alloc(16),
+  ]);
+  const challenge = {
+    schema_version: 1,
+    contract_version: "1.1",
+    challenge_id: challengeId,
+    quote_id: quoteId,
+    market_id: quote.market_id,
+    side: quote.side,
+    amount_in_atoms: quote.amount_in_atoms,
+    minimum_output_atoms: quote.minimum_output_atoms,
+    authorization_payload_base64: payload.toString("base64"),
+    server_time_ms: quote.server_time_ms,
+    expires_at_ms: quote.expires_at_ms,
+  };
+  const prepared = {
+    ...(await fixture("execution-prepare")),
+    expires_at_ms: quote.expires_at_ms,
+  };
+  const submitted = await fixture("execution-submit");
+  const calls: string[] = [];
+  const fetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const path = new URL(input instanceof Request ? input.url : input).pathname;
+    if (path === "/sonar/markets") return Response.json(markets);
+    if (path.endsWith("/execution/challenge")) return Response.json(challenge);
+    if (path.endsWith("/execution/prepare")) {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      assert.equal(body.challenge_id, challengeId);
+      assert.equal(typeof body.authorization_signature, "string");
+      return Response.json(prepared);
+    }
+    if (path.endsWith("/execution/submit")) return Response.json(submitted);
+    return new Response(null, { status: 404 });
+  };
+  const client = new StrataClient({ apiBase: "https://example.test", fetch });
+  const result = await client.executeQuote({
+    quote,
+    ownerWallet: owner,
+    accountSequence: 7n,
+    signer: {
+      publicKey: owner,
+      async signMessage(message) {
+        calls.push("authorization");
+        assert.deepEqual(Array.from(message), Array.from(payload));
+        return new Uint8Array(64).fill(1);
+      },
+      async signTransaction(transaction) {
+        calls.push("transaction");
+        return transaction;
+      },
+    },
+    async verifyTransaction(context) {
+      calls.push("verify");
+      assert.equal(context.prepared.minimum_output_atoms, quote.minimum_output_atoms);
+    },
+  });
+
+  assert.equal(result.status, "submitted");
+  assert.deepEqual(calls, ["authorization", "verify", "transaction"]);
+});
+
+function u64(value: string): Buffer {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64LE(BigInt(value));
+  return buffer;
+}

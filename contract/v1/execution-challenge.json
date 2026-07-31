@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "contract_version": "1.1",
+  "challenge_id": "sc_0123456789abcdef0123456789abcdef",
+  "quote_id": "sq_0123456789abcdef0123456789abcdef",
+  "market_id": "11111111111111111111111111111111",
+  "side": "sell",
+  "amount_in_atoms": "10000000",
+  "minimum_output_atoms": "1980050",
+  "authorization_payload_base64": "c3RyYXRhLXNvbmFyLWV4ZWN1dGlvbjp2MQA=",
+  "server_time_ms": 1100,
+  "expires_at_ms": 4000
+}
