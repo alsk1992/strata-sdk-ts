@@ -27,7 +27,7 @@
     }
   },
   "bin": {
-    "strata": "./dist/src/cli.js"
+    "strata": "dist/src/cli.js"
   },
   "files": [
     "dist/src",
