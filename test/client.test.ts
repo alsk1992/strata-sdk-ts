@@ -210,7 +210,7 @@ test("binds execution to minimum output and verifies before session signing", as
       publicKey: owner,
       async signMessage(message) {
         calls.push("authorization");
-        assert.deepEqual(message, payload);
+        assert.deepEqual(Array.from(message), Array.from(payload));
         return new Uint8Array(64).fill(1);
       },
       async signTransaction(transaction) {
