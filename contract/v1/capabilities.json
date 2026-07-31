@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "contract_version": "1.0",
+  "contract_version": "1.1",
   "capabilities": [
     {
       "id": "markets.read",
@@ -44,22 +44,22 @@
     },
     {
       "id": "trade.prepare",
-      "introduced_in": "1.0",
+      "introduced_in": "1.1",
       "stability": "beta",
       "required_scope": "trade:prepare",
       "risk": "prepare",
       "default_enabled": false,
-      "public_sdk": false,
+      "public_sdk": true,
       "mcp_exposure": "none"
     },
     {
       "id": "trade.submit",
-      "introduced_in": "1.0",
+      "introduced_in": "1.1",
       "stability": "beta",
       "required_scope": "trade:submit",
       "risk": "submit",
       "default_enabled": false,
-      "public_sdk": false,
+      "public_sdk": true,
       "mcp_exposure": "none"
     }
   ]

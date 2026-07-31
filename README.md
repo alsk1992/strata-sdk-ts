@@ -153,6 +153,31 @@ The returned `minimum_output_atoms` is always the authoritative floor. A
 tolerance can affect which result is viable; it never changes what the field
 means.
 
+## Authenticated execution
+
+When the live prepare and submit capabilities are enabled, `executeQuote`
+executes an unexpired quote through an application-owned Vault session:
+
+```ts
+const receipt = await strata.executeQuote({
+  quote,
+  ownerWallet,
+  accountSequence,
+  signer: vaultSession,
+  verifyTransaction: verifyForThisVault,
+});
+```
+
+The SDK never accepts a seed phrase or private key. It asks the non-exportable
+session to sign a one-time authorization bound to the quote and
+`minimum_output_atoms`, prepares the transaction, runs your mandatory
+deny-by-default verifier, and only then asks the session to sign the
+transaction. Submission is idempotent.
+
+The owner wallet remains the recovery authority for pausing or revoking the
+session and for withdrawals. Prepare and submit are disabled by default; the
+included terminal client remains read-only.
+
 ## Choose your Strata interface
 
 | You are building… | Start here |
@@ -186,8 +211,9 @@ not compatible with the SDK's supported contract.
 
 ## Current release
 
-`0.1.x` covers market discovery and read-only Sonar quotes. It does not prepare,
-sign, or submit transactions and never needs wallet or private-key material.
+The SDK contains market discovery, Sonar quotes, and the gated Vault-session
+execution contract. The included terminal client is read-only. Live capability
+discovery is authoritative.
 
 ## Resources
 

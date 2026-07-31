@@ -5,6 +5,9 @@ import {
   type CapabilityCatalog,
   type CapabilityDescriptor,
   type ErrorResponse,
+  type ExecutionChallengeResponse,
+  type ExecutionPrepareResponse,
+  type ExecutionSubmitResponse,
   type Market,
   type MarketsResponse,
   type QuoteResponse,
@@ -29,6 +32,16 @@ const QUOTE_KEYS = [
   "reference_price",
   "price_impact_pct",
   "provider",
+] as const;
+
+const EXECUTION_BINDING_KEYS = [
+  "schema_version",
+  "contract_version",
+  "quote_id",
+  "market_id",
+  "side",
+  "amount_in_atoms",
+  "minimum_output_atoms",
 ] as const;
 
 function object(value: unknown, field: string): JsonObject {
@@ -246,6 +259,141 @@ export function quoteResponse(value: unknown): QuoteResponse {
     price_impact_pct: decimal(response.price_impact_pct, "price_impact_pct", true),
     provider: "Sonar",
   };
+}
+
+function executionBinding(
+  value: JsonObject,
+  field: string,
+): Pick<
+  ExecutionChallengeResponse,
+  | "schema_version"
+  | "contract_version"
+  | "quote_id"
+  | "market_id"
+  | "side"
+  | "amount_in_atoms"
+  | "minimum_output_atoms"
+> {
+  version(value);
+  if (typeof value.quote_id !== "string" || !/^sq_[0-9a-f]{32}$/.test(value.quote_id)) {
+    throw new Error(`${field}.quote_id must be an opaque quote handle`);
+  }
+  if (value.side !== "buy" && value.side !== "sell") {
+    throw new Error(`${field}.side is invalid`);
+  }
+  return {
+    schema_version: CONTRACT_SCHEMA_VERSION,
+    contract_version: CONTRACT_VERSION,
+    quote_id: value.quote_id,
+    market_id: string(value.market_id, `${field}.market_id`),
+    side: value.side,
+    amount_in_atoms: atomic(value.amount_in_atoms, `${field}.amount_in_atoms`),
+    minimum_output_atoms: atomic(
+      value.minimum_output_atoms,
+      `${field}.minimum_output_atoms`,
+    ),
+  };
+}
+
+export function executionChallengeResponse(value: unknown): ExecutionChallengeResponse {
+  const response = object(value, "execution challenge");
+  exactKeys(
+    response,
+    [
+      ...EXECUTION_BINDING_KEYS,
+      "challenge_id",
+      "authorization_payload_base64",
+      "server_time_ms",
+      "expires_at_ms",
+    ],
+    "execution challenge",
+  );
+  const binding = executionBinding(response, "execution challenge");
+  if (
+    typeof response.challenge_id !== "string"
+    || !/^sc_[0-9a-f]{32}$/.test(response.challenge_id)
+  ) {
+    throw new Error("challenge_id must be an opaque challenge handle");
+  }
+  const serverTime = integer(response.server_time_ms, "execution challenge.server_time_ms");
+  const expiresAt = integer(response.expires_at_ms, "execution challenge.expires_at_ms");
+  if (expiresAt <= serverTime) throw new Error("execution challenge lifetime is invalid");
+  const payload = string(
+    response.authorization_payload_base64,
+    "execution challenge.authorization_payload_base64",
+  );
+  if (!validBase64(payload)) throw new Error("authorization payload is not canonical base64");
+  return {
+    ...binding,
+    challenge_id: response.challenge_id,
+    authorization_payload_base64: payload,
+    server_time_ms: serverTime,
+    expires_at_ms: expiresAt,
+  };
+}
+
+export function executionPrepareResponse(value: unknown): ExecutionPrepareResponse {
+  const response = object(value, "prepared execution");
+  exactKeys(
+    response,
+    [
+      ...EXECUTION_BINDING_KEYS,
+      "execution_id",
+      "transaction_base64",
+      "recent_blockhash",
+      "last_valid_block_height",
+      "expires_at_ms",
+    ],
+    "prepared execution",
+  );
+  const binding = executionBinding(response, "prepared execution");
+  if (
+    typeof response.execution_id !== "string"
+    || !/^se_[0-9a-f]{32}$/.test(response.execution_id)
+  ) {
+    throw new Error("execution_id must be an opaque execution handle");
+  }
+  const transaction = string(response.transaction_base64, "prepared transaction");
+  if (!validBase64(transaction)) throw new Error("prepared transaction is not canonical base64");
+  return {
+    ...binding,
+    execution_id: response.execution_id,
+    transaction_base64: transaction,
+    recent_blockhash: string(response.recent_blockhash, "prepared recent_blockhash"),
+    last_valid_block_height: integer(
+      response.last_valid_block_height,
+      "prepared last_valid_block_height",
+    ),
+    expires_at_ms: integer(response.expires_at_ms, "prepared expires_at_ms"),
+  };
+}
+
+export function executionSubmitResponse(value: unknown): ExecutionSubmitResponse {
+  const response = object(value, "execution submission");
+  exactKeys(
+    response,
+    ["schema_version", "contract_version", "execution_id", "signature", "status"],
+    "execution submission",
+  );
+  version(response);
+  if (
+    typeof response.execution_id !== "string"
+    || !/^se_[0-9a-f]{32}$/.test(response.execution_id)
+  ) {
+    throw new Error("execution_id must be an opaque execution handle");
+  }
+  if (response.status !== "submitted") throw new Error("execution status is invalid");
+  return {
+    schema_version: CONTRACT_SCHEMA_VERSION,
+    contract_version: CONTRACT_VERSION,
+    execution_id: response.execution_id,
+    signature: string(response.signature, "execution signature"),
+    status: "submitted",
+  };
+}
+
+function validBase64(value: string): boolean {
+  return value.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(value);
 }
 
 export function errorResponse(value: unknown): ErrorResponse | null {
