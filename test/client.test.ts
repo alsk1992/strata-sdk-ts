@@ -38,7 +38,6 @@ test("reads shared fixtures and binds a quote to its request", async () => {
     market: "sol/usdc",
     side: "sell",
     amountInAtoms: 10_000_000n,
-    slippageBps: 50,
   });
 
   assert.equal(response.quote_id, "sq_0123456789abcdef0123456789abcdef");
@@ -50,8 +49,33 @@ test("reads shared fixtures and binds a quote to its request", async () => {
     market_id: "11111111111111111111111111111111",
     side: "sell",
     amount_in_atoms: "10000000",
-    slippage_bps: 50,
+    slippage_bps: 0,
   });
+});
+
+test("passes an explicit execution tolerance unchanged", async () => {
+  const markets = await fixture("markets");
+  const quote = await fixture("quote");
+  let quoteBody: Record<string, unknown> | undefined;
+  const fetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname === "/sonar/markets") return Response.json(markets);
+    if (init?.body) quoteBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+    return Response.json(quote);
+  };
+  const client = new StrataClient({ apiBase: "https://example.test", fetch });
+
+  await client.quote({
+    market: "SOL/USDC",
+    side: "sell",
+    amountInAtoms: "10000000",
+    slippageBps: 25,
+  });
+
+  assert.equal(quoteBody?.slippage_bps, 25);
 });
 
 test("fails closed when a quote gains an unreviewed field", async () => {
