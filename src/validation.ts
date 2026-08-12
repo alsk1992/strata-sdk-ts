@@ -2,6 +2,10 @@ import {
   CONTRACT_SCHEMA_VERSION,
   CONTRACT_VERSION,
   type AtomicString,
+  type ActionEdge,
+  type ActionGraph,
+  type ActionNode,
+  type ActionOperation,
   type CapabilityCatalog,
   type CapabilityDescriptor,
   type ErrorResponse,
@@ -209,6 +213,120 @@ export function capabilityCatalog(value: unknown): CapabilityCatalog {
     schema_version: CONTRACT_SCHEMA_VERSION,
     contract_version: CONTRACT_VERSION,
     capabilities,
+  };
+}
+
+function actionNode(value: unknown): ActionNode {
+  const item = object(value, "action node");
+  const expected = ["id", "kind", "summary", "required_capabilities", "available"];
+  if (item.operation !== undefined) expected.push("operation");
+  exactKeys(item, expected, "action node");
+  const kind = string(item.kind, "action node.kind");
+  if (![
+    "discovery",
+    "read",
+    "prepare",
+    "external_signature",
+    "submit",
+    "receipt",
+  ].includes(kind)) {
+    throw new Error("invalid action node kind");
+  }
+  if (!Array.isArray(item.required_capabilities)) {
+    throw new Error("action node.required_capabilities must be an array");
+  }
+  const operation = item.operation === undefined
+    ? undefined
+    : (() => {
+        const value = object(item.operation, "action operation");
+        exactKeys(value, ["method", "path", "mcp_tool"], "action operation");
+        const method = string(value.method, "action operation.method");
+        if (method !== "GET" && method !== "POST") {
+          throw new Error("invalid action operation method");
+        }
+        return {
+          method: method as ActionOperation["method"],
+          path: string(value.path, "action operation.path"),
+          mcp_tool: string(value.mcp_tool, "action operation.mcp_tool"),
+        };
+      })();
+  return {
+    id: string(item.id, "action node.id"),
+    kind: kind as ActionNode["kind"],
+    summary: string(item.summary, "action node.summary"),
+    required_capabilities: item.required_capabilities.map((id) =>
+      string(id, "action node.required_capabilities[]")
+    ),
+    available: boolean(item.available, "action node.available"),
+    ...(operation ? { operation } : {}),
+  };
+}
+
+function actionEdge(value: unknown): ActionEdge {
+  const item = object(value, "action edge");
+  exactKeys(item, ["from", "to", "condition"], "action edge");
+  return {
+    from: string(item.from, "action edge.from"),
+    to: string(item.to, "action edge.to"),
+    condition: string(item.condition, "action edge.condition"),
+  };
+}
+
+export function actionGraph(value: unknown): ActionGraph {
+  const graph = object(value, "action graph");
+  exactKeys(
+    graph,
+    [
+      "schema_version",
+      "graph_version",
+      "contract_version",
+      "entry_node",
+      "authority",
+      "nodes",
+      "edges",
+    ],
+    "action graph",
+  );
+  version(graph);
+  if (graph.graph_version !== "1.0") throw new Error("unsupported action graph");
+  const authority = object(graph.authority, "action graph.authority");
+  exactKeys(
+    authority,
+    ["permission_source", "signing_location", "accepts_private_keys"],
+    "action graph.authority",
+  );
+  if (
+    authority.permission_source !== "external_agent_owner"
+    || authority.signing_location !== "external"
+    || authority.accepts_private_keys !== false
+  ) {
+    throw new Error("unsupported action authority model");
+  }
+  if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+    throw new Error("action graph nodes and edges must be arrays");
+  }
+  const nodes = graph.nodes.map(actionNode);
+  const edges = graph.edges.map(actionEdge);
+  const ids = new Set(nodes.map((node) => node.id));
+  const entryNode = string(graph.entry_node, "action graph.entry_node");
+  if (ids.size !== nodes.length || !ids.has(entryNode)) {
+    throw new Error("action graph node identity is invalid");
+  }
+  if (edges.some((edge) => !ids.has(edge.from) || !ids.has(edge.to))) {
+    throw new Error("action graph edge references an unknown node");
+  }
+  return {
+    schema_version: CONTRACT_SCHEMA_VERSION,
+    graph_version: "1.0",
+    contract_version: CONTRACT_VERSION,
+    entry_node: entryNode,
+    authority: {
+      permission_source: "external_agent_owner",
+      signing_location: "external",
+      accepts_private_keys: false,
+    },
+    nodes,
+    edges,
   };
 }
 

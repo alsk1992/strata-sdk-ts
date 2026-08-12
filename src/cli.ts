@@ -41,8 +41,12 @@ function help(): void {
 
 Usage:
   strata capabilities [--json]
+  strata action-graph [--json]
   strata markets [--all] [--json]
   strata quote --market SOL/USDC --side sell --amount-atoms 10000000 [--slippage-bps N] [--json]
+  strata execution-challenge --market SOL/USDC --quote-id ID --owner-wallet PUBKEY --session-public-key PUBKEY --account-sequence N [--json]
+  strata execution-prepare --market SOL/USDC --challenge-id ID --authorization-signature BASE58 [--json]
+  strata execution-submit --market SOL/USDC --execution-id ID --signed-transaction-base64 BASE64 --idempotency-key KEY [--json]
 
 Global:
   --api-base URL       Public Strata API (default: ${DEFAULT_API_BASE})
@@ -50,7 +54,8 @@ Global:
   --slippage-bps N     Optional maximum execution tolerance (default: 0)
   --json               Stable machine-readable output
 
-This release is read-only and never asks for a wallet or keypair.`);
+The external agent owner controls permission and signing. This client accepts
+public keys, signatures, and signed transactions, never private keys or seed phrases.`);
 }
 
 async function run(): Promise<void> {
@@ -76,6 +81,20 @@ async function run(): Promise<void> {
           `${capability.id.padEnd(18)} ${capability.stability.padEnd(8)} `
           + `${capability.risk.padEnd(11)} default=${capability.default_enabled ? "enabled" : "disabled"}`,
         );
+      }
+    }
+    return;
+  }
+
+  if (parsed.command === "action-graph") {
+    const graph = await client.actionGraph();
+    if (json) console.log(JSON.stringify(graph, null, 2));
+    else {
+      console.log(`Strata action graph ${graph.graph_version}`);
+      console.log(`  permission: ${graph.authority.permission_source}`);
+      console.log(`  signing:    ${graph.authority.signing_location}`);
+      for (const node of graph.nodes) {
+        console.log(`${node.available ? "ready" : "off  "} ${node.id}: ${node.summary}`);
       }
     }
     return;
@@ -122,6 +141,54 @@ async function run(): Promise<void> {
       console.log(`  price impact:   ${quote.price_impact_pct}%`);
       console.log(`  valid for:       ${quote.expires_at_ms - quote.server_time_ms} ms`);
       console.log(`  provider:        ${quote.provider}`);
+    }
+    return;
+  }
+
+  if (parsed.command === "execution-challenge") {
+    const response = await client.executionChallenge({
+      market: value(parsed.flags, "market"),
+      quoteId: value(parsed.flags, "quote-id"),
+      ownerWallet: value(parsed.flags, "owner-wallet"),
+      sessionPublicKey: value(parsed.flags, "session-public-key"),
+      accountSequence: value(parsed.flags, "account-sequence"),
+    });
+    if (json) console.log(JSON.stringify(response, null, 2));
+    else {
+      console.log(`challenge:     ${response.challenge_id}`);
+      console.log(`authorization: ${response.authorization_payload_base64}`);
+      console.log(`expires:       ${response.expires_at_ms}`);
+    }
+    return;
+  }
+
+  if (parsed.command === "execution-prepare") {
+    const response = await client.executionPrepare({
+      market: value(parsed.flags, "market"),
+      challengeId: value(parsed.flags, "challenge-id"),
+      authorizationSignature: value(parsed.flags, "authorization-signature"),
+    });
+    if (json) console.log(JSON.stringify(response, null, 2));
+    else {
+      console.log(`execution:   ${response.execution_id}`);
+      console.log(`transaction: ${response.transaction_base64}`);
+      console.log(`expires:     ${response.expires_at_ms}`);
+    }
+    return;
+  }
+
+  if (parsed.command === "execution-submit") {
+    const response = await client.executionSubmit({
+      market: value(parsed.flags, "market"),
+      executionId: value(parsed.flags, "execution-id"),
+      signedTransactionBase64: value(parsed.flags, "signed-transaction-base64"),
+      idempotencyKey: value(parsed.flags, "idempotency-key"),
+    });
+    if (json) console.log(JSON.stringify(response, null, 2));
+    else {
+      console.log(`execution: ${response.execution_id}`);
+      console.log(`signature: ${response.signature}`);
+      console.log(`status:    ${response.status}`);
     }
     return;
   }

@@ -57,6 +57,80 @@ test("reads shared fixtures and binds a quote to its request", async () => {
   });
 });
 
+test("discovers the executable action graph and its external authority boundary", async () => {
+  const graph = await fixture("action-graph");
+  const client = new StrataClient({
+    apiBase: "https://example.test",
+    fetch: async () => Response.json(graph),
+  });
+
+  const response = await client.actionGraph();
+  assert.equal(response.entry_node, "discover_capabilities");
+  assert.equal(response.authority.permission_source, "external_agent_owner");
+  assert.equal(response.authority.signing_location, "external");
+  assert.equal(response.authority.accepts_private_keys, false);
+  assert.ok(response.nodes.some((node) => node.id === "submit_execution"));
+});
+
+test("exposes challenge, prepare, and submit as separately signable primitives", async () => {
+  const markets = await fixture("markets");
+  const challenge = await fixture("execution-challenge");
+  const prepared = await fixture("execution-prepare");
+  const submitted = await fixture("execution-submit");
+  const requests: Array<{ path: string; body?: Record<string, unknown> }> = [];
+  const fetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const path = new URL(input instanceof Request ? input.url : input).pathname;
+    requests.push({
+      path,
+      ...(init?.body
+        ? { body: JSON.parse(String(init.body)) as Record<string, unknown> }
+        : {}),
+    });
+    if (path === "/sonar/markets") return Response.json(markets);
+    if (path.endsWith("/execution/challenge")) return Response.json(challenge);
+    if (path.endsWith("/execution/prepare")) return Response.json(prepared);
+    if (path.endsWith("/execution/submit")) return Response.json(submitted);
+    return new Response(null, { status: 404 });
+  };
+  const client = new StrataClient({ apiBase: "https://example.test", fetch });
+  const owner = "11111111111111111111111111111111";
+
+  const challenged = await client.executionChallenge({
+    market: "SOL/USDC",
+    quoteId: "sq_0123456789abcdef0123456789abcdef",
+    ownerWallet: owner,
+    sessionPublicKey: owner,
+    accountSequence: "7",
+  });
+  const preparedExecution = await client.executionPrepare({
+    market: "SOL/USDC",
+    challengeId: challenged.challenge_id,
+    authorizationSignature:
+      "1111111111111111111111111111111111111111111111111111111111111111",
+  });
+  const receipt = await client.executionSubmit({
+    market: "SOL/USDC",
+    executionId: preparedExecution.execution_id,
+    signedTransactionBase64: preparedExecution.transaction_base64,
+    idempotencyKey: preparedExecution.execution_id,
+  });
+
+  assert.equal(receipt.status, "submitted");
+  assert.deepEqual(
+    requests.filter((request) => request.body).map((request) => request.path),
+    [
+      "/sonar/markets/sol-usdc/execution/challenge",
+      "/sonar/markets/sol-usdc/execution/prepare",
+      "/sonar/markets/sol-usdc/execution/submit",
+    ],
+  );
+  assert.equal(requests.find((request) => request.path.endsWith("/challenge"))?.body?.account_sequence, "7");
+  assert.equal(requests.find((request) => request.path.endsWith("/submit"))?.body?.idempotency_key, preparedExecution.execution_id);
+});
+
 test("passes an explicit execution tolerance unchanged", async () => {
   const markets = await fixture("markets");
   const quote = await fixture("quote");
