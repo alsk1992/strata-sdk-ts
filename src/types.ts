@@ -46,6 +46,51 @@ export interface CapabilityCatalog {
   capabilities: CapabilityDescriptor[];
 }
 
+export type ActionNodeKind =
+  | "discovery"
+  | "read"
+  | "prepare"
+  | "external_signature"
+  | "submit"
+  | "receipt";
+
+export interface ActionAuthorityModel {
+  permission_source: "external_agent_owner";
+  signing_location: "external";
+  accepts_private_keys: false;
+}
+
+export interface ActionOperation {
+  method: "GET" | "POST";
+  path: string;
+  mcp_tool: string;
+}
+
+export interface ActionNode {
+  id: string;
+  kind: ActionNodeKind;
+  summary: string;
+  required_capabilities: string[];
+  available: boolean;
+  operation?: ActionOperation;
+}
+
+export interface ActionEdge {
+  from: string;
+  to: string;
+  condition: string;
+}
+
+export interface ActionGraph {
+  schema_version: typeof CONTRACT_SCHEMA_VERSION;
+  graph_version: "1.0";
+  contract_version: typeof CONTRACT_VERSION;
+  entry_node: string;
+  authority: ActionAuthorityModel;
+  nodes: ActionNode[];
+  edges: ActionEdge[];
+}
+
 export interface QuoteRequest {
   /** Human label such as SOL/USDC, or the public market ID. */
   market: string;
@@ -88,6 +133,15 @@ export interface ExecutionChallengeResponse {
   expires_at_ms: number;
 }
 
+export interface ExecutionChallengeRequest {
+  /** Human label such as SOL/USDC, or the public market ID. */
+  market: string;
+  quoteId: string;
+  ownerWallet: string;
+  sessionPublicKey: string;
+  accountSequence: AtomicString | bigint;
+}
+
 export interface ExecutionPrepareResponse {
   schema_version: typeof CONTRACT_SCHEMA_VERSION;
   contract_version: typeof CONTRACT_VERSION;
@@ -103,12 +157,27 @@ export interface ExecutionPrepareResponse {
   expires_at_ms: number;
 }
 
+export interface ExecutionPrepareRequest {
+  /** The same market used to create the challenge. */
+  market: string;
+  challengeId: string;
+  authorizationSignature: string;
+}
+
 export interface ExecutionSubmitResponse {
   schema_version: typeof CONTRACT_SCHEMA_VERSION;
   contract_version: typeof CONTRACT_VERSION;
   execution_id: string;
   signature: string;
   status: "submitted";
+}
+
+export interface ExecutionSubmitRequest {
+  /** The same market used to prepare the execution. */
+  market: string;
+  executionId: string;
+  signedTransactionBase64: string;
+  idempotencyKey: string;
 }
 
 export interface ExecutionVerificationContext {

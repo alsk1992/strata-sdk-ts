@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "graph_version": "1.0",
+  "contract_version": "1.1",
+  "entry_node": "discover_capabilities",
+  "authority": {
+    "permission_source": "external_agent_owner",
+    "signing_location": "external",
+    "accepts_private_keys": false
+  },
+  "nodes": [
+    {
+      "id": "discover_capabilities",
+      "kind": "discovery",
+      "summary": "Read the live capabilities that currently expose Strata operations.",
+      "required_capabilities": [],
+      "available": true,
+      "operation": {
+        "method": "GET",
+        "path": "/sonar/capabilities",
+        "mcp_tool": "strata_capabilities"
+      }
+    },
+    {
+      "id": "discover_markets",
+      "kind": "discovery",
+      "summary": "Discover ready markets, token decimals, and public operation paths.",
+      "required_capabilities": [
+        "markets.read"
+      ],
+      "available": true,
+      "operation": {
+        "method": "GET",
+        "path": "/sonar/markets",
+        "mcp_tool": "strata_markets"
+      }
+    },
+    {
+      "id": "discover_action_graph",
+      "kind": "discovery",
+      "summary": "Read the executable topology, live node availability, external signing steps, and transition conditions.",
+      "required_capabilities": [],
+      "available": true,
+      "operation": {
+        "method": "GET",
+        "path": "/sonar/action-graph",
+        "mcp_tool": "strata_action_graph"
+      }
+    },
+    {
+      "id": "request_quote",
+      "kind": "read",
+      "summary": "Request economics bound to a market, side, exact input atoms, and tolerance.",
+      "required_capabilities": [
+        "quotes.read"
+      ],
+      "available": true,
+      "operation": {
+        "method": "POST",
+        "path": "/sonar/markets/{market}/quote",
+        "mcp_tool": "strata_quote"
+      }
+    },
+    {
+      "id": "request_execution_challenge",
+      "kind": "prepare",
+      "summary": "Request canonical authorization bytes for an unexpired quote and external signer.",
+      "required_capabilities": [
+        "trade.prepare"
+      ],
+      "available": true,
+      "operation": {
+        "method": "POST",
+        "path": "/sonar/markets/{market}/execution/challenge",
+        "mcp_tool": "strata_execution_challenge"
+      }
+    },
+    {
+      "id": "sign_authorization",
+      "kind": "external_signature",
+      "summary": "The agent owner's configured signer signs the returned authorization bytes externally.",
+      "required_capabilities": [],
+      "available": true
+    },
+    {
+      "id": "prepare_execution",
+      "kind": "prepare",
+      "summary": "Exchange the authorization signature for a quote-bound partially signed transaction.",
+      "required_capabilities": [
+        "trade.prepare"
+      ],
+      "available": true,
+      "operation": {
+        "method": "POST",
+        "path": "/sonar/markets/{market}/execution/prepare",
+        "mcp_tool": "strata_execution_prepare"
+      }
+    },
+    {
+      "id": "sign_transaction",
+      "kind": "external_signature",
+      "summary": "The external signer verifies and fills its signature slot without sending key material to Strata.",
+      "required_capabilities": [],
+      "available": true
+    },
+    {
+      "id": "submit_execution",
+      "kind": "submit",
+      "summary": "Submit the signed transaction with an idempotency key.",
+      "required_capabilities": [
+        "trade.submit"
+      ],
+      "available": true,
+      "operation": {
+        "method": "POST",
+        "path": "/sonar/markets/{market}/execution/submit",
+        "mcp_tool": "strata_execution_submit"
+      }
+    },
+    {
+      "id": "receive_receipt",
+      "kind": "receipt",
+      "summary": "Receive the execution ID, Solana signature, and submitted status.",
+      "required_capabilities": [],
+      "available": true
+    }
+  ],
+  "edges": [
+    {
+      "from": "discover_capabilities",
+      "to": "discover_action_graph",
+      "condition": "the returned contract version is supported"
+    },
+    {
+      "from": "discover_action_graph",
+      "to": "discover_markets",
+      "condition": "markets.read is enabled"
+    },
+    {
+      "from": "discover_markets",
+      "to": "request_quote",
+      "condition": "quotes.read is enabled and the market is ready"
+    },
+    {
+      "from": "request_quote",
+      "to": "request_execution_challenge",
+      "condition": "trade.prepare is enabled and the quote is unexpired"
+    },
+    {
+      "from": "request_execution_challenge",
+      "to": "sign_authorization",
+      "condition": "the challenge bindings match the quote and signer"
+    },
+    {
+      "from": "sign_authorization",
+      "to": "prepare_execution",
+      "condition": "a valid external authorization signature is available"
+    },
+    {
+      "from": "prepare_execution",
+      "to": "sign_transaction",
+      "condition": "the prepared transaction preserves the signed bindings"
+    },
+    {
+      "from": "sign_transaction",
+      "to": "submit_execution",
+      "condition": "trade.submit is enabled and the signed transaction is unmodified"
+    },
+    {
+      "from": "submit_execution",
+      "to": "receive_receipt",
+      "condition": "the execution ID and idempotency key match"
+    }
+  ]
+}

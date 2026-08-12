@@ -48,9 +48,9 @@
       "stability": "beta",
       "required_scope": "trade:prepare",
       "risk": "prepare",
-      "default_enabled": false,
+      "default_enabled": true,
       "public_sdk": true,
-      "mcp_exposure": "none"
+      "mcp_exposure": "prepare"
     },
     {
       "id": "trade.submit",
@@ -58,9 +58,9 @@
       "stability": "beta",
       "required_scope": "trade:submit",
       "risk": "submit",
-      "default_enabled": false,
+      "default_enabled": true,
       "public_sdk": true,
-      "mcp_exposure": "none"
+      "mcp_exposure": "submit"
     }
   ]
 }

@@ -1,11 +1,15 @@
 import {
   DEFAULT_API_BASE,
   DEFAULT_SLIPPAGE_BPS,
+  type ActionGraph,
   type CapabilityCatalog,
   type ExecuteQuoteRequest,
   type ExecutionChallengeResponse,
+  type ExecutionChallengeRequest,
   type ExecutionPrepareResponse,
+  type ExecutionPrepareRequest,
   type ExecutionSubmitResponse,
+  type ExecutionSubmitRequest,
   type MarketsResponse,
   type QuoteRequest,
   type QuoteResponse,
@@ -13,6 +17,7 @@ import {
 } from "./types.js";
 import {
   atomic,
+  actionGraph,
   capabilityCatalog,
   errorResponse,
   executionChallengeResponse,
@@ -23,6 +28,7 @@ import {
 } from "./validation.js";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const BASE58_PATTERN = /^[1-9A-HJ-NP-Za-km-z]+$/;
 
 export class StrataApiError extends Error {
   readonly status: number;
@@ -75,6 +81,10 @@ export class StrataClient {
     return capabilityCatalog(await this.get("/sonar/capabilities"));
   }
 
+  async actionGraph(): Promise<ActionGraph> {
+    return actionGraph(await this.get("/sonar/action-graph"));
+  }
+
   async markets(): Promise<MarketsResponse> {
     return marketsResponse(await this.get("/sonar/markets"));
   }
@@ -122,12 +132,69 @@ export class StrataClient {
     return quote;
   }
 
+  async executionChallenge(
+    request: ExecutionChallengeRequest,
+  ): Promise<ExecutionChallengeResponse> {
+    const executionPath = await this.executionPath(request.market);
+    const quoteId = normalizeHandle(request.quoteId, "quoteId", "sq_");
+    const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
+    const sessionPublicKey = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+    const accountSequence = normalizeAtoms(request.accountSequence);
+    const challenge = executionChallengeResponse(await this.post(`${executionPath}/challenge`, {
+      quote_id: quoteId,
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+      account_sequence: accountSequence,
+    }));
+    if (challenge.quote_id !== quoteId) {
+      throw new StrataContractError("execution challenge does not match the requested quote");
+    }
+    return challenge;
+  }
+
+  async executionPrepare(
+    request: ExecutionPrepareRequest,
+  ): Promise<ExecutionPrepareResponse> {
+    const executionPath = await this.executionPath(request.market);
+    const challengeId = normalizeHandle(request.challengeId, "challengeId", "sc_");
+    const signature = request.authorizationSignature.trim();
+    const signatureBytes = base58Decode(signature, 64, "authorizationSignature");
+    if (base58Encode(signatureBytes) !== signature) {
+      throw new TypeError("authorizationSignature must be a canonical base58 signature");
+    }
+    return executionPrepareResponse(await this.post(`${executionPath}/prepare`, {
+      challenge_id: challengeId,
+      authorization_signature: signature,
+    }));
+  }
+
+  async executionSubmit(
+    request: ExecutionSubmitRequest,
+  ): Promise<ExecutionSubmitResponse> {
+    const executionPath = await this.executionPath(request.market);
+    const executionId = normalizeHandle(request.executionId, "executionId", "se_");
+    const signedTransaction = request.signedTransactionBase64.trim();
+    if (!validBase64(signedTransaction)) {
+      throw new TypeError("signedTransactionBase64 must be canonical base64");
+    }
+    const idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey);
+    const submitted = executionSubmitResponse(await this.post(`${executionPath}/submit`, {
+      execution_id: executionId,
+      signed_transaction_base64: signedTransaction,
+      idempotency_key: idempotencyKey,
+    }));
+    if (submitted.execution_id !== executionId) {
+      throw new StrataContractError("execution receipt does not match the submitted transaction");
+    }
+    return submitted;
+  }
+
   /**
    * Execute one short-lived Sonar quote through a non-exportable Vault session.
    *
    * The SDK validates every public binding before signing. The caller-supplied
-   * deny-by-default verifier must approve the exact prepared transaction before
-   * it is passed to the session adapter.
+   * verifier checks that the exact prepared transaction matches the external
+   * agent owner's configured execution policy before it reaches the signer.
    */
   async executeQuote(request: ExecuteQuoteRequest): Promise<ExecutionSubmitResponse> {
     if (typeof request.verifyTransaction !== "function") {
@@ -146,16 +213,13 @@ export class StrataClient {
       throw new TypeError("signer.signTransaction is required");
     }
     const accountSequence = normalizeAtoms(request.accountSequence);
-    const executionPath = await this.executionPath(quote.market_id);
-    const challenge = executionChallengeResponse(await this.post(
-      `${executionPath}/challenge`,
-      {
-        quote_id: quote.quote_id,
-        owner_wallet: ownerWallet,
-        session_public_key: sessionPublicKey,
-        account_sequence: accountSequence,
-      },
-    ));
+    const challenge = await this.executionChallenge({
+      market: quote.market_id,
+      quoteId: quote.quote_id,
+      ownerWallet,
+      sessionPublicKey,
+      accountSequence,
+    });
     assertExecutionBinding(challenge, quote, "challenge");
     const authorization = validateAuthorizationPayload(
       challenge,
@@ -168,13 +232,11 @@ export class StrataClient {
     if (!(authorizationSignature instanceof Uint8Array) || authorizationSignature.length !== 64) {
       throw new StrataContractError("session authorization signature must contain 64 bytes");
     }
-    const prepared = executionPrepareResponse(await this.post(
-      `${executionPath}/prepare`,
-      {
-        challenge_id: challenge.challenge_id,
-        authorization_signature: base58Encode(authorizationSignature),
-      },
-    ));
+    const prepared = await this.executionPrepare({
+      market: quote.market_id,
+      challengeId: challenge.challenge_id,
+      authorizationSignature: base58Encode(authorizationSignature),
+    });
     assertExecutionBinding(prepared, quote, "prepared execution");
     if (
       prepared.recent_blockhash !== authorization.recentBlockhash
@@ -197,27 +259,26 @@ export class StrataClient {
     if (!validBase64(signedTransaction)) {
       throw new StrataContractError("session signer returned an invalid transaction");
     }
-    const submitted = executionSubmitResponse(await this.post(
-      `${executionPath}/submit`,
-      {
-        execution_id: prepared.execution_id,
-        signed_transaction_base64: signedTransaction,
-        idempotency_key: normalizeIdempotencyKey(
-          request.idempotencyKey ?? prepared.execution_id,
-        ),
-      },
-    ));
+    const submitted = await this.executionSubmit({
+      market: quote.market_id,
+      executionId: prepared.execution_id,
+      signedTransactionBase64: signedTransaction,
+      idempotencyKey: request.idempotencyKey ?? prepared.execution_id,
+    });
     if (submitted.execution_id !== prepared.execution_id) {
       throw new StrataContractError("execution receipt does not match the prepared transaction");
     }
     return submitted;
   }
 
-  private async executionPath(marketId: string): Promise<string> {
+  private async executionPath(requestedMarket: string): Promise<string> {
     const catalog = await this.markets();
-    const market = catalog.markets.find((item) => item.market_pda === marketId);
+    const market = catalog.markets.find(
+      (item) => item.market_pda === requestedMarket
+        || item.label.toLowerCase() === requestedMarket.trim().toLowerCase(),
+    );
     if (!market?.ready || !market.quote_path || !validOperationPath(market.quote_path)) {
-      throw new StrataContractError(`Sonar execution is not available for: ${marketId}`);
+      throw new StrataContractError(`Sonar execution is not available for: ${requestedMarket}`);
     }
     return market.quote_path.slice(0, -"/quote".length) + "/execution";
   }
@@ -404,15 +465,27 @@ function canonicalPublicKey(value: string, field: string): string {
   return trimmed;
 }
 
+function normalizeHandle(value: string, field: string, prefix: "sq_" | "sc_" | "se_"): string {
+  const trimmed = value.trim();
+  if (!new RegExp(`^${prefix}[0-9a-f]{32}$`).test(trimmed)) {
+    throw new TypeError(`${field} must be an opaque ${prefix.slice(0, -1)} handle`);
+  }
+  return trimmed;
+}
+
 function base58Decode32(value: string): Uint8Array {
-  if (!value || !/^[1-9A-HJ-NP-Za-km-z]+$/.test(value)) {
-    throw new TypeError("public key must use base58");
+  return base58Decode(value, 32, "public key");
+}
+
+function base58Decode(value: string, expectedLength: number, field: string): Uint8Array {
+  if (!value || !BASE58_PATTERN.test(value)) {
+    throw new TypeError(`${field} must use base58`);
   }
   const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   const bytes = [0];
   for (const character of value) {
     let carry = alphabet.indexOf(character);
-    if (carry < 0) throw new TypeError("public key must use base58");
+    if (carry < 0) throw new TypeError(`${field} must use base58`);
     for (let index = 0; index < bytes.length; index++) {
       carry += bytes[index]! * 58;
       bytes[index] = carry & 0xff;
@@ -427,7 +500,9 @@ function base58Decode32(value: string): Uint8Array {
     bytes.push(0);
   }
   const decoded = Uint8Array.from(bytes.reverse());
-  if (decoded.length !== 32) throw new TypeError("public key must contain 32 bytes");
+  if (decoded.length !== expectedLength) {
+    throw new TypeError(`${field} must contain ${expectedLength} bytes`);
+  }
   return decoded;
 }
 
