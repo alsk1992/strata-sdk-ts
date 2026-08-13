@@ -1,0 +1,50 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "server_time_ms": 1786550400000,
+  "authority": {
+    "permission_source": "external_agent_owner",
+    "signing_location": "external",
+    "accepts_private_keys": false
+  },
+  "capabilities": [
+    {
+      "id": "platform.discover",
+      "risk": "read",
+      "required_scope": "platform:read",
+      "transports": ["http"],
+      "mcp_exposure": "none"
+    },
+    {
+      "id": "assets.read",
+      "risk": "read",
+      "required_scope": "market:read",
+      "transports": ["http"],
+      "mcp_exposure": "none"
+    },
+    {
+      "id": "markets.read",
+      "risk": "read",
+      "required_scope": "market:read",
+      "transports": ["http"],
+      "mcp_exposure": "none"
+    },
+    {
+      "id": "books.read",
+      "risk": "read",
+      "required_scope": "market:read",
+      "transports": ["http", "websocket"],
+      "mcp_exposure": "none"
+    },
+    {
+      "id": "account.read",
+      "risk": "read",
+      "required_scope": "account:read",
+      "transports": [
+        "http",
+        "websocket"
+      ],
+      "mcp_exposure": "none"
+    }
+  ]
+}

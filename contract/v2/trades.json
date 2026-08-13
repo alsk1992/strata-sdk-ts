@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "market_id": "market_33333333333333333333333333333333",
+  "server_time_ms": 1786550400000,
+  "trades": [
+    {
+      "trade_id": "trade_55555555555555555555555555555555",
+      "side": "buy",
+      "price_atoms": "150000000",
+      "size_atoms": "500000000",
+      "executed_at_ms": 1786550399000
+    }
+  ]
+}

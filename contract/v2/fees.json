@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "market_id": "market_33333333333333333333333333333333",
+  "server_time_ms": 1786550400000,
+  "passive_maker_fee_bps": 0,
+  "maximum_immediate_execution_fee_bps": 10,
+  "book_prices_include_trading_fees": false,
+  "exact_fee_returned_by_quote": true
+}

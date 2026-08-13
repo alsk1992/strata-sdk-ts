@@ -14,12 +14,12 @@
     },
     {
       "id": "books.read",
-      "introduced_in": "1.0",
+      "introduced_in": "1.1",
       "stability": "beta",
       "required_scope": "market:read",
       "risk": "read",
-      "default_enabled": false,
-      "public_sdk": false,
+      "default_enabled": true,
+      "public_sdk": true,
       "mcp_exposure": "none"
     },
     {
@@ -34,12 +34,12 @@
     },
     {
       "id": "account.read",
-      "introduced_in": "1.0",
+      "introduced_in": "1.1",
       "stability": "beta",
       "required_scope": "account:read",
       "risk": "read",
-      "default_enabled": false,
-      "public_sdk": false,
+      "default_enabled": true,
+      "public_sdk": true,
       "mcp_exposure": "none"
     },
     {

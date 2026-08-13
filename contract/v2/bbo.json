@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "market_id": "market_33333333333333333333333333333333",
+  "stream_id": "book:market_33333333333333333333333333333333",
+  "sequence": "42",
+  "server_time_ms": 1786550400000,
+  "best_bid": { "price_atoms": "149990000", "size_atoms": "2000000000" },
+  "best_ask": { "price_atoms": "150010000", "size_atoms": "1800000000" }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "server_time_ms": 1786550400000,
+  "assets": [
+    {
+      "asset_id": "asset_11111111111111111111111111111111",
+      "symbol": "SOL",
+      "name": "Solana",
+      "decimals": 9,
+      "logo_url": "https://assets.stratabook.app/sol.png",
+      "network": "solana"
+    },
+    {
+      "asset_id": "asset_22222222222222222222222222222222",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "decimals": 6,
+      "network": "solana"
+    }
+  ],
+  "page": {
+    "next_cursor": null,
+    "has_more": false
+  }
+}
