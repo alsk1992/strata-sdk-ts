@@ -239,15 +239,19 @@ function actionNode(value: unknown): ActionNode {
     ? undefined
     : (() => {
         const value = object(item.operation, "action operation");
-        exactKeys(value, ["method", "path", "mcp_tool"], "action operation");
+        const keys = ["method", "path"];
+        if (value.mcp_tool !== undefined) keys.push("mcp_tool");
+        exactKeys(value, keys, "action operation");
         const method = string(value.method, "action operation.method");
-        if (method !== "GET" && method !== "POST") {
+        if (method !== "GET" && method !== "POST" && method !== "WEBSOCKET") {
           throw new Error("invalid action operation method");
         }
         return {
           method: method as ActionOperation["method"],
           path: string(value.path, "action operation.path"),
-          mcp_tool: string(value.mcp_tool, "action operation.mcp_tool"),
+          ...(value.mcp_tool === undefined
+            ? {}
+            : { mcp_tool: string(value.mcp_tool, "action operation.mcp_tool") }),
         };
       })();
   return {

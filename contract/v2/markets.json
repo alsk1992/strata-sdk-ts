@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "server_time_ms": 1786550400000,
+  "markets": [
+    {
+      "market_id": "market_33333333333333333333333333333333",
+      "label": "SOL/USDC",
+      "base_asset_id": "asset_11111111111111111111111111111111",
+      "quote_asset_id": "asset_22222222222222222222222222222222",
+      "status": "active",
+      "available_actions": ["quote", "execute_immediate"]
+    }
+  ],
+  "page": {
+    "next_cursor": null,
+    "has_more": false
+  }
+}

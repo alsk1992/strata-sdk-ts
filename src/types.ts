@@ -61,9 +61,9 @@ export interface ActionAuthorityModel {
 }
 
 export interface ActionOperation {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "WEBSOCKET";
   path: string;
-  mcp_tool: string;
+  mcp_tool?: string;
 }
 
 export interface ActionNode {

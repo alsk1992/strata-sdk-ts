@@ -1,0 +1,17 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "market_id": "market_33333333333333333333333333333333",
+  "stream_id": "book:market_33333333333333333333333333333333",
+  "sequence": "42",
+  "server_time_ms": 1786550400000,
+  "snapshot_id": "snapshot_44444444444444444444444444444444",
+  "bids": [
+    { "price_atoms": "149990000", "size_atoms": "2000000000" },
+    { "price_atoms": "149980000", "size_atoms": "3500000000" }
+  ],
+  "asks": [
+    { "price_atoms": "150010000", "size_atoms": "1800000000" },
+    { "price_atoms": "150020000", "size_atoms": "4100000000" }
+  ]
+}
