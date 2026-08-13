@@ -110,9 +110,14 @@ export interface QuoteResponse {
   side: QuoteSide;
   amount_in_atoms: AtomicString;
   amount_in_consumed_atoms: AtomicString;
+  /** User-net output after the separately reported output_fee_atoms. */
   amount_out_atoms: AtomicString;
+  /** User-net execution floor after fees and the requested tolerance. */
   minimum_output_atoms: AtomicString;
+  /** Fee charged in the input token, when applicable. */
   input_fee_atoms: AtomicString;
+  /** Strata fee charged in the output token. Gross route output is
+   * amount_out_atoms + output_fee_atoms. */
   output_fee_atoms: AtomicString;
   reference_price: string;
   price_impact_pct: string;

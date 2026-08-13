@@ -34,6 +34,11 @@ inconsistent economics fail closed. Input-asset and output-asset fees are
 labelled separately. Each quote covers all eligible liquidity in the selected
 Strata market while exposing no Sonar implementation details.
 
+`amount_out_atoms` is what the user receives after `output_fee_atoms`.
+Gross route output for an external route-quality comparison is exactly
+`amount_out_atoms + output_fee_atoms`; all-in user comparisons use
+`amount_out_atoms`.
+
 Quotes default to zero execution tolerance, so `minimum_output_atoms` equals
 the quoted output. Set `slippageBps` explicitly only when willing to accept a
 lower floor. Price impact remains a separate measure of current market depth.
@@ -168,5 +173,6 @@ Use `orders.challenge`, `orders.prepare`, and `orders.submit` when an agent
 runtime needs to broker each boundary separately. If submission times out, call
 `orders.status` with the same control ID and idempotency key to recover the
 durable result across process restarts. All market and order IDs are opaque,
-cancel-all is bounded to the exact order set in its signed challenge, and
-submission is idempotent.
+cancel-all is bounded to the exact order set in its signed challenge, replace
+is one atomic cancel-plus-place transaction, heterogeneous batches are capped
+at six operations, and submission is idempotent.

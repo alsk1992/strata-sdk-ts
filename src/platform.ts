@@ -304,8 +304,33 @@ export interface PlatformAccountOrder {
   readonly remaining_size_atoms: AtomicString;
 }
 
-export type PlatformOrderAction = "place" | "cancel" | "cancel_all";
+export type PlatformOrderAction = "place" | "cancel" | "cancel_all" | "replace" | "batch";
 export type PlatformRestingOrderType = "good_until_cancelled" | "post_only";
+
+export type PlatformOrderBatchOperation =
+  | {
+      readonly action: "place";
+      readonly accountSequence: AtomicString | bigint;
+      readonly clientOrderId: string;
+      readonly side: PlatformTradeSide;
+      readonly orderType: PlatformRestingOrderType;
+      readonly limitPriceAtoms: AtomicString | bigint;
+      readonly sizeAtoms: AtomicString | bigint;
+    }
+  | {
+      readonly action: "cancel";
+      readonly orderId: PlatformEntityId;
+    }
+  | {
+      readonly action: "replace";
+      readonly orderId: PlatformEntityId;
+      readonly accountSequence: AtomicString | bigint;
+      readonly clientOrderId: string;
+      readonly side: PlatformTradeSide;
+      readonly orderType: PlatformRestingOrderType;
+      readonly limitPriceAtoms: AtomicString | bigint;
+      readonly sizeAtoms: AtomicString | bigint;
+    };
 
 export type PlatformOrderChallengeInput =
   | {
@@ -329,6 +354,24 @@ export type PlatformOrderChallengeInput =
       readonly action: "cancel_all";
       readonly ownerWallet: string;
       readonly sessionPublicKey: string;
+    }
+  | {
+      readonly action: "replace";
+      readonly ownerWallet: string;
+      readonly sessionPublicKey: string;
+      readonly orderId: PlatformEntityId;
+      readonly accountSequence: AtomicString | bigint;
+      readonly clientOrderId: string;
+      readonly side: PlatformTradeSide;
+      readonly orderType: PlatformRestingOrderType;
+      readonly limitPriceAtoms: AtomicString | bigint;
+      readonly sizeAtoms: AtomicString | bigint;
+    }
+  | {
+      readonly action: "batch";
+      readonly ownerWallet: string;
+      readonly sessionPublicKey: string;
+      readonly operations: readonly PlatformOrderBatchOperation[];
     };
 
 export interface PlatformOrderChallengeResponse {
@@ -408,7 +451,9 @@ export interface PlatformOrderVerificationContext {
 export type PlatformOrderExecuteOperation =
   | Omit<Extract<PlatformOrderChallengeInput, { action: "place" }>, "sessionPublicKey">
   | Omit<Extract<PlatformOrderChallengeInput, { action: "cancel" }>, "sessionPublicKey">
-  | Omit<Extract<PlatformOrderChallengeInput, { action: "cancel_all" }>, "sessionPublicKey">;
+  | Omit<Extract<PlatformOrderChallengeInput, { action: "cancel_all" }>, "sessionPublicKey">
+  | Omit<Extract<PlatformOrderChallengeInput, { action: "replace" }>, "sessionPublicKey">
+  | Omit<Extract<PlatformOrderChallengeInput, { action: "batch" }>, "sessionPublicKey">;
 
 export interface PlatformOrderExecuteInput {
   readonly operation: PlatformOrderExecuteOperation;

@@ -676,3 +676,213 @@ test("executes a resting order only after byte-exact authorization and transacti
   assert.equal(submitBody?.signed_transaction_base64, "BQYHCA==");
   assert.equal(receipt.status, "submitted");
 });
+
+test("serializes atomic replace and mixed batch order controls without implementation details", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  (capabilities.capabilities as Array<Record<string, unknown>>).push({
+    id: "orders.prepare",
+    risk: "prepare",
+    required_scope: "orders:prepare",
+    transports: ["http", "mcp"],
+    mcp_exposure: "prepare",
+  });
+  const fixture = await v2Fixture("order-challenge");
+  const marketId = "market_22222222222222222222222222222222";
+  const ownerWallet = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
+  const sessionPublicKey = "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2";
+  const oldOrder = "order_11111111111111111111111111111111";
+  const bodies: Array<Record<string, unknown>> = [];
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      bodies.push(body);
+      return Response.json({
+        ...fixture,
+        action: body.action,
+        order_ids: body.action === "replace"
+          ? [oldOrder, "order_22222222222222222222222222222222"]
+          : [oldOrder, "order_33333333333333333333333333333333"],
+      });
+    },
+  });
+  const place = {
+    accountSequence: 8n,
+    clientOrderId: "replacement-8",
+    side: "sell" as const,
+    orderType: "post_only" as const,
+    limitPriceAtoms: 151_000_000n,
+    sizeAtoms: 2_000_000n,
+  };
+  await client.orders.challenge(marketId, {
+    action: "replace",
+    ownerWallet,
+    sessionPublicKey,
+    orderId: oldOrder,
+    ...place,
+  });
+  await client.orders.challenge(marketId, {
+    action: "batch",
+    ownerWallet,
+    sessionPublicKey,
+    operations: [
+      { action: "cancel", orderId: oldOrder },
+      { action: "place", ...place, accountSequence: 9n, clientOrderId: "batch-9" },
+    ],
+  });
+  assert.deepEqual(bodies[0], {
+    action: "replace",
+    owner_wallet: ownerWallet,
+    session_public_key: sessionPublicKey,
+    order_id: oldOrder,
+    account_sequence: "8",
+    client_order_id: "replacement-8",
+    side: "sell",
+    order_type: "post_only",
+    limit_price_atoms: "151000000",
+    size_atoms: "2000000",
+  });
+  assert.deepEqual((bodies[1]?.operations as unknown[]), [
+    { action: "cancel", order_id: oldOrder },
+    {
+      action: "place",
+      account_sequence: "9",
+      client_order_id: "batch-9",
+      side: "sell",
+      order_type: "post_only",
+      limit_price_atoms: "151000000",
+      size_atoms: "2000000",
+    },
+  ]);
+  assert.equal(JSON.stringify(bodies).includes("venue"), false);
+  assert.equal(JSON.stringify(bodies).includes("program"), false);
+});
+
+test("rejects a changed nested replacement after batch authorization", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  (capabilities.capabilities as Array<Record<string, unknown>>).push({
+    id: "orders.prepare",
+    risk: "prepare",
+    required_scope: "orders:prepare",
+    transports: ["http", "mcp"],
+    mcp_exposure: "prepare",
+  });
+  const marketId = "market_22222222222222222222222222222222";
+  const ownerWallet = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
+  const sessionPublicKey = "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2";
+  const cancelled = new Uint8Array(32).fill(3);
+  const replaced = new Uint8Array(32).fill(4);
+  const replacement = new Uint8Array(32).fill(5);
+  const nonce = new Uint8Array(16).fill(6);
+  const expiresAtMs = 1_786_550_460_000;
+  const encoder = new TextEncoder();
+  const u16 = (value: number): Uint8Array => {
+    const bytes = new Uint8Array(2);
+    new DataView(bytes.buffer).setUint16(0, value, true);
+    return bytes;
+  };
+  const u64 = (value: bigint): Uint8Array => {
+    const bytes = new Uint8Array(8);
+    new DataView(bytes.buffer).setBigUint64(0, value, true);
+    return bytes;
+  };
+  const join = (...parts: readonly Uint8Array[]): Uint8Array => {
+    const output = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
+    let offset = 0;
+    for (const part of parts) {
+      output.set(part, offset);
+      offset += part.length;
+    }
+    return output;
+  };
+  const opaqueOrderId = async (pda: Uint8Array): Promise<string> => {
+    const input = encoder.encode(
+      `strata-sdk-product:v1\0order\0${marketId}:${base58Encode(pda)}`,
+    );
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", input));
+    return `order_${Array.from(digest.slice(0, 16), (byte) =>
+      byte.toString(16).padStart(2, "0")).join("")}`;
+  };
+  const replacementClientId = encoder.encode("replacement-8");
+  const authorization = join(
+    encoder.encode("strata-platform-order-control:v1\0"),
+    new Uint8Array(32).fill(9),
+    base58Decode(ownerWallet, 32, "ownerWallet"),
+    base58Decode(sessionPublicKey, 32, "sessionPublicKey"),
+    new Uint8Array([4, 2]),
+    new Uint8Array([1]),
+    cancelled,
+    new Uint8Array([1]),
+    new Uint8Array([3]),
+    replaced,
+    new Uint8Array([0]),
+    u64(8n),
+    u16(replacementClientId.length),
+    replacementClientId,
+    new Uint8Array([1, 3]),
+    u64(151_000_000n),
+    u64(2_000_000n),
+    replacement,
+    new Uint8Array(32).fill(7),
+    u64(400_000_000n),
+    u64(BigInt(expiresAtMs)),
+    nonce,
+    new Uint8Array(16).fill(8),
+  );
+  const challenge = {
+    schema_version: 2,
+    contract_version: "2.0",
+    challenge_id: `oc_${Array.from(nonce, (byte) =>
+      byte.toString(16).padStart(2, "0")).join("")}`,
+    market_id: marketId,
+    action: "batch",
+    order_ids: await Promise.all([cancelled, replaced, replacement].map(opaqueOrderId)),
+    authorization_payload_base64: Buffer.from(authorization).toString("base64"),
+    server_time_ms: expiresAtMs - 60_000,
+    expires_at_ms: expiresAtMs,
+  };
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      if (path.endsWith("/challenge")) return Response.json(challenge);
+      throw new Error("authorization drift must fail before prepare");
+    },
+  });
+  let signed = false;
+  await assert.rejects(
+    client.orders.execute(marketId, {
+      operation: {
+        action: "batch",
+        ownerWallet,
+        operations: [
+          { action: "cancel", orderId: await opaqueOrderId(cancelled) },
+          {
+            action: "replace",
+            orderId: await opaqueOrderId(replaced),
+            accountSequence: 8n,
+            clientOrderId: "replacement-8",
+            side: "sell",
+            orderType: "post_only",
+            limitPriceAtoms: 151_000_000n,
+            sizeAtoms: 2_000_001n,
+          },
+        ],
+      },
+      signer: {
+        publicKey: sessionPublicKey,
+        signMessage: async () => {
+          signed = true;
+          return new Uint8Array(64);
+        },
+        signTransaction: async () => "AQ==",
+      },
+      verifyTransaction: () => undefined,
+    }),
+    /order size changed/,
+  );
+  assert.equal(signed, false);
+});
