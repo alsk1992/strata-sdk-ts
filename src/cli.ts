@@ -133,8 +133,8 @@ async function run(): Promise<void> {
       console.log(`${quote.market_id} ${quote.side} quote`);
       console.log(`  input atoms:    ${quote.amount_in_atoms}`);
       console.log(`  consumed atoms: ${quote.amount_in_consumed_atoms}`);
-      console.log(`  output atoms:   ${quote.amount_out_atoms}`);
-      console.log(`  minimum atoms:  ${quote.minimum_output_atoms}`);
+      console.log(`  output atoms (net):  ${quote.amount_out_atoms}`);
+      console.log(`  minimum atoms (net): ${quote.minimum_output_atoms}`);
       console.log(`  input fee:      ${quote.input_fee_atoms}`);
       console.log(`  output fee:     ${quote.output_fee_atoms}`);
       console.log(`  reference:      ${quote.reference_price}`);

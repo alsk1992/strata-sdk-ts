@@ -56,7 +56,7 @@ const ORDER_TYPES = [
   "good_until_cancelled", "immediate_or_cancel", "fill_or_kill", "post_only",
 ] as const;
 const FILL_SETTLEMENT_STATES = ["pending", "confirmed", "failed"] as const;
-const ORDER_ACTIONS = ["place", "cancel", "cancel_all"] as const;
+const ORDER_ACTIONS = ["place", "cancel", "cancel_all", "replace", "batch"] as const;
 const ORDER_CONTROL_STATUSES = ["submitting", "submitted", "failed"] as const;
 
 function object(value: unknown, field: string): JsonObject {
@@ -131,8 +131,8 @@ function orderAction(value: unknown, field: string): PlatformOrderAction {
 }
 
 function opaqueOrderIds(value: unknown, field: string): string[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 6) {
-    throw new Error(`${field} must contain between one and six order IDs`);
+  if (!Array.isArray(value) || value.length < 1 || value.length > 12) {
+    throw new Error(`${field} must contain between one and twelve order IDs`);
   }
   const ids = value.map((item, index) => opaqueOrderId(item, `${field}[${index}]`));
   unique(ids, field);

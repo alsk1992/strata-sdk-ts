@@ -262,7 +262,7 @@
     {
       "id": "request_order_challenge",
       "kind": "prepare",
-      "summary": "Bind a product-level place, cancel, or cancel-all operation to canonical authorization bytes.",
+      "summary": "Bind a product-level place, cancel, bounded cancel-all, atomic replace, or atomic batch operation to canonical authorization bytes.",
       "required_capabilities": [
         "orders.prepare"
       ],

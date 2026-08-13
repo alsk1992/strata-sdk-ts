@@ -438,6 +438,36 @@ export class StrataPlatformClient {
         owner_wallet: ownerWallet,
         session_public_key: sessionPublicKey,
       };
+    } else if (request.action === "replace") {
+      body = {
+        action: "replace",
+        owner_wallet: ownerWallet,
+        session_public_key: sessionPublicKey,
+        order_id: checkedOrderId(request.orderId),
+        ...orderPlaceWire(request),
+      };
+    } else if (request.action === "batch") {
+      if (request.operations.length < 1 || request.operations.length > 6) {
+        throw new TypeError("order batch must contain between one and six operations");
+      }
+      body = {
+        action: "batch",
+        owner_wallet: ownerWallet,
+        session_public_key: sessionPublicKey,
+        operations: request.operations.map((operation) => {
+          if (operation.action === "place") {
+            return { action: "place", ...orderPlaceWire(operation) };
+          }
+          if (operation.action === "cancel") {
+            return { action: "cancel", order_id: checkedOrderId(operation.orderId) };
+          }
+          return {
+            action: "replace",
+            order_id: checkedOrderId(operation.orderId),
+            ...orderPlaceWire(operation),
+          };
+        }),
+      };
     } else {
       throw new TypeError("order action is invalid");
     }
@@ -696,6 +726,30 @@ export class StrataPlatformClient {
   }
 }
 
+function orderPlaceWire(operation: {
+  readonly accountSequence: string | bigint;
+  readonly clientOrderId: string;
+  readonly side: string;
+  readonly orderType: string;
+  readonly limitPriceAtoms: string | bigint;
+  readonly sizeAtoms: string | bigint;
+}): Record<string, unknown> {
+  if (operation.side !== "buy" && operation.side !== "sell") {
+    throw new TypeError("side must be buy or sell");
+  }
+  if (operation.orderType !== "good_until_cancelled" && operation.orderType !== "post_only") {
+    throw new TypeError("resting orderType must be good_until_cancelled or post_only");
+  }
+  return {
+    account_sequence: checkedAtomic(operation.accountSequence, "accountSequence", true),
+    client_order_id: checkedOpaqueInput(operation.clientOrderId, "clientOrderId"),
+    side: operation.side,
+    order_type: operation.orderType,
+    limit_price_atoms: checkedAtomic(operation.limitPriceAtoms, "limitPriceAtoms", false),
+    size_atoms: checkedAtomic(operation.sizeAtoms, "sizeAtoms", false),
+  };
+}
+
 function checkedMarketId(value: string): string {
   const marketId = value.trim();
   if (!/^market_[0-9a-f]{32}$/.test(marketId)) {
@@ -868,7 +922,10 @@ async function validateOrderAuthorization(
   cursor += 32;
   const actionByte = readByte(bytes, cursor, "order authorization action");
   cursor += 1;
-  const expectedAction = operation.action === "place" ? 0 : operation.action === "cancel" ? 1 : 2;
+  const expectedAction = operation.action === "place" ? 0
+    : operation.action === "cancel" ? 1
+      : operation.action === "cancel_all" ? 2
+        : operation.action === "replace" ? 3 : 4;
   if (actionByte !== expectedAction || challenge.action !== operation.action) {
     throw new StrataContractError("order authorization action changed");
   }
@@ -904,7 +961,7 @@ async function validateOrderAuthorization(
       "order",
       `${challenge.market_id}:${base58Encode(pda)}`,
     ));
-  } else {
+  } else if (operation.action === "cancel" || operation.action === "cancel_all") {
     const count = readByte(bytes, cursor, "cancel order count");
     cursor += 1;
     if (count < 1 || count > 6 || (operation.action === "cancel" && count !== 1)) {
@@ -925,6 +982,56 @@ async function validateOrderAuthorization(
     }
     if (operation.action === "cancel" && derivedOrderIds[0] !== checkedOrderId(operation.orderId)) {
       throw new StrataContractError("cancel order identity changed");
+    }
+  } else if (operation.action === "replace") {
+    let parsed = await validateCancelBinding(
+      bytes,
+      cursor,
+      challenge.market_id,
+      operation.orderId,
+    );
+    cursor = parsed.cursor;
+    derivedOrderIds.push(parsed.orderId);
+    parsed = await validatePlaceBinding(bytes, cursor, challenge.market_id, operation);
+    cursor = parsed.cursor;
+    derivedOrderIds.push(parsed.orderId);
+  } else {
+    const count = readByte(bytes, cursor, "batch count");
+    cursor += 1;
+    if (count < 1 || count > 6 || count !== operation.operations.length) {
+      throw new StrataContractError("order batch count changed");
+    }
+    for (const item of operation.operations) {
+      const tag = readByte(bytes, cursor, "batch action");
+      cursor += 1;
+      if (item.action === "place" && tag === 0) {
+        const parsed = await validatePlaceBinding(bytes, cursor, challenge.market_id, item);
+        cursor = parsed.cursor;
+        derivedOrderIds.push(parsed.orderId);
+      } else if (item.action === "cancel" && tag === 1) {
+        const parsed = await validateCancelBinding(
+          bytes,
+          cursor,
+          challenge.market_id,
+          item.orderId,
+        );
+        cursor = parsed.cursor;
+        derivedOrderIds.push(parsed.orderId);
+      } else if (item.action === "replace" && tag === 3) {
+        let parsed = await validateCancelBinding(
+          bytes,
+          cursor,
+          challenge.market_id,
+          item.orderId,
+        );
+        cursor = parsed.cursor;
+        derivedOrderIds.push(parsed.orderId);
+        parsed = await validatePlaceBinding(bytes, cursor, challenge.market_id, item);
+        cursor = parsed.cursor;
+        derivedOrderIds.push(parsed.orderId);
+      } else {
+        throw new StrataContractError("order batch action changed");
+      }
     }
   }
   if (
@@ -947,6 +1054,74 @@ async function validateOrderAuthorization(
     throw new StrataContractError("order authorization contains unrecognized fields");
   }
   return bytes;
+}
+
+async function validatePlaceBinding(
+  bytes: Uint8Array,
+  start: number,
+  marketId: string,
+  operation: {
+    readonly accountSequence: string | bigint;
+    readonly clientOrderId: string;
+    readonly side: string;
+    readonly orderType: string;
+    readonly limitPriceAtoms: string | bigint;
+    readonly sizeAtoms: string | bigint;
+  },
+): Promise<{ readonly cursor: number; readonly orderId: string }> {
+  const encoder = new TextEncoder();
+  let cursor = start;
+  expectU64Value(bytes, cursor, operation.accountSequence, "order account sequence");
+  cursor += 8;
+  const clientLength = readU16(bytes, cursor, "client order ID length");
+  cursor += 2;
+  const clientId = encoder.encode(checkedOpaqueInput(operation.clientOrderId, "clientOrderId"));
+  if (clientLength !== clientId.length) {
+    throw new StrataContractError("client order ID length changed");
+  }
+  expectBytes(bytes, cursor, clientId, "client order ID");
+  cursor += clientLength;
+  const side = readByte(bytes, cursor, "order side");
+  cursor += 1;
+  if (side !== (operation.side === "buy" ? 0 : 1)) {
+    throw new StrataContractError("order side changed");
+  }
+  const orderType = readByte(bytes, cursor, "order type");
+  cursor += 1;
+  if (orderType !== (operation.orderType === "good_until_cancelled" ? 0 : 3)) {
+    throw new StrataContractError("order type changed");
+  }
+  expectU64Value(bytes, cursor, operation.limitPriceAtoms, "order limit price");
+  cursor += 8;
+  expectU64Value(bytes, cursor, operation.sizeAtoms, "order size");
+  cursor += 8;
+  const pda = take(bytes, cursor, 32, "order identity");
+  cursor += 32;
+  return {
+    cursor,
+    orderId: await opaqueProductId("order", `${marketId}:${base58Encode(pda)}`),
+  };
+}
+
+async function validateCancelBinding(
+  bytes: Uint8Array,
+  start: number,
+  marketId: string,
+  expectedOrderId: string,
+): Promise<{ readonly cursor: number; readonly orderId: string }> {
+  let cursor = start;
+  const pda = take(bytes, cursor, 32, "cancel order identity");
+  cursor += 32;
+  const rentSource = readByte(bytes, cursor, "cancel rent source");
+  cursor += 1;
+  if (rentSource !== 0 && rentSource !== 1) {
+    throw new StrataContractError("cancel rent source is invalid");
+  }
+  const orderId = await opaqueProductId("order", `${marketId}:${base58Encode(pda)}`);
+  if (orderId !== checkedOrderId(expectedOrderId)) {
+    throw new StrataContractError("cancel order identity changed");
+  }
+  return { cursor, orderId };
 }
 
 function take(source: Uint8Array, offset: number, length: number, field: string): Uint8Array {
