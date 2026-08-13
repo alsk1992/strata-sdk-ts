@@ -20,6 +20,10 @@ import {
   type PlatformMarketAction,
   type PlatformMarketStatusResponse,
   type PlatformMarketsResponse,
+  type PlatformOrderAction,
+  type PlatformOrderChallengeResponse,
+  type PlatformOrderPrepareResponse,
+  type PlatformOrderSubmitResponse,
   type PlatformTrade,
   type PlatformTradesResponse,
 } from "./platform.js";
@@ -50,6 +54,7 @@ const ORDER_TYPES = [
   "good_until_cancelled", "immediate_or_cancel", "fill_or_kill", "post_only",
 ] as const;
 const FILL_SETTLEMENT_STATES = ["pending", "confirmed", "failed"] as const;
+const ORDER_ACTIONS = ["place", "cancel", "cancel_all"] as const;
 
 function object(value: unknown, field: string): JsonObject {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -91,6 +96,44 @@ function walletAddress(value: unknown, field = "wallet_address"): string {
   const address = string(value, field);
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)) throw new Error(`${field} is invalid`);
   return address;
+}
+
+function opaqueOrderId(value: unknown, field: string): string {
+  const id = string(value, field);
+  if (!/^order_[0-9a-f]{32}$/.test(id)) throw new Error(`${field} is invalid`);
+  return id;
+}
+
+function opaqueHandle(value: unknown, field: string, prefix: string): string {
+  const handle = string(value, field);
+  if (!new RegExp(`^${prefix}[0-9a-f]{32}$`).test(handle)) {
+    throw new Error(`${field} is invalid`);
+  }
+  return handle;
+}
+
+function canonicalBase64(value: unknown, field: string): string {
+  const encoded = string(value, field);
+  if (encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+    throw new Error(`${field} must be canonical base64`);
+  }
+  return encoded;
+}
+
+function orderAction(value: unknown, field: string): PlatformOrderAction {
+  if (!ORDER_ACTIONS.includes(value as typeof ORDER_ACTIONS[number])) {
+    throw new Error(`${field} is invalid`);
+  }
+  return value as PlatformOrderAction;
+}
+
+function opaqueOrderIds(value: unknown, field: string): string[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 6) {
+    throw new Error(`${field} must contain between one and six order IDs`);
+  }
+  const ids = value.map((item, index) => opaqueOrderId(item, `${field}[${index}]`));
+  unique(ids, field);
+  return ids;
 }
 
 function signedAtomicString(value: unknown, field: string): string {
@@ -778,4 +821,85 @@ export function platformAccountEvent(value: unknown): PlatformAccountEvent {
     };
   }
   throw new Error("account event type is invalid");
+}
+
+export function platformOrderChallengeResponse(
+  value: unknown,
+): PlatformOrderChallengeResponse {
+  const response = object(value, "order challenge response");
+  exactKeys(response, [
+    "schema_version", "contract_version", "challenge_id", "market_id", "action",
+    "order_ids", "authorization_payload_base64", "server_time_ms", "expires_at_ms",
+  ], "order challenge response");
+  version(response);
+  const serverTime = integer(response.server_time_ms, "server_time_ms");
+  const expiresAt = integer(response.expires_at_ms, "expires_at_ms");
+  if (expiresAt <= serverTime) throw new Error("order challenge is already expired");
+  return {
+    schema_version: PLATFORM_SCHEMA_VERSION,
+    contract_version: PLATFORM_CONTRACT_VERSION,
+    challenge_id: opaqueHandle(response.challenge_id, "challenge_id", "oc_"),
+    market_id: marketId(response.market_id),
+    action: orderAction(response.action, "action"),
+    order_ids: opaqueOrderIds(response.order_ids, "order_ids"),
+    authorization_payload_base64: canonicalBase64(
+      response.authorization_payload_base64,
+      "authorization_payload_base64",
+    ),
+    server_time_ms: serverTime,
+    expires_at_ms: expiresAt,
+  };
+}
+
+export function platformOrderPrepareResponse(value: unknown): PlatformOrderPrepareResponse {
+  const response = object(value, "order prepare response");
+  exactKeys(response, [
+    "schema_version", "contract_version", "order_control_id", "market_id", "action",
+    "order_ids", "transaction_base64", "recent_blockhash", "last_valid_block_height",
+    "expires_at_ms",
+  ], "order prepare response");
+  version(response);
+  const recentBlockhash = string(response.recent_blockhash, "recent_blockhash");
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(recentBlockhash)) {
+    throw new Error("recent_blockhash is invalid");
+  }
+  return {
+    schema_version: PLATFORM_SCHEMA_VERSION,
+    contract_version: PLATFORM_CONTRACT_VERSION,
+    order_control_id: opaqueHandle(response.order_control_id, "order_control_id", "or_"),
+    market_id: marketId(response.market_id),
+    action: orderAction(response.action, "action"),
+    order_ids: opaqueOrderIds(response.order_ids, "order_ids"),
+    transaction_base64: canonicalBase64(response.transaction_base64, "transaction_base64"),
+    recent_blockhash: recentBlockhash,
+    last_valid_block_height: integer(
+      response.last_valid_block_height,
+      "last_valid_block_height",
+    ),
+    expires_at_ms: integer(response.expires_at_ms, "expires_at_ms"),
+  };
+}
+
+export function platformOrderSubmitResponse(value: unknown): PlatformOrderSubmitResponse {
+  const response = object(value, "order submit response");
+  exactKeys(response, [
+    "schema_version", "contract_version", "order_control_id", "market_id", "action",
+    "order_ids", "signature", "status",
+  ], "order submit response");
+  version(response);
+  if (response.status !== "submitted") throw new Error("order submission status is invalid");
+  const signature = string(response.signature, "signature");
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) {
+    throw new Error("signature is invalid");
+  }
+  return {
+    schema_version: PLATFORM_SCHEMA_VERSION,
+    contract_version: PLATFORM_CONTRACT_VERSION,
+    order_control_id: opaqueHandle(response.order_control_id, "order_control_id", "or_"),
+    market_id: marketId(response.market_id),
+    action: orderAction(response.action, "action"),
+    order_ids: opaqueOrderIds(response.order_ids, "order_ids"),
+    signature,
+    status: "submitted",
+  };
 }

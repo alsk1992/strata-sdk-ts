@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "challenge_id": "oc_11111111111111111111111111111111",
+  "market_id": "market_22222222222222222222222222222222",
+  "action": "place",
+  "order_ids": ["order_33333333333333333333333333333333"],
+  "authorization_payload_base64": "c3RyYXRhLW9yZGVyLWF1dGhvcml6YXRpb24=",
+  "server_time_ms": 1786550400000,
+  "expires_at_ms": 1786550460000
+}

@@ -1,6 +1,6 @@
 {
   "name": "@stratabook/sdk",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Official TypeScript SDK and terminal client for Strata and Sonar.",
   "type": "module",
   "license": "MIT OR Apache-2.0",

@@ -1,4 +1,9 @@
-import type { AtomicString, CapabilityRisk, McpExposure } from "./types.js";
+import type {
+  AtomicString,
+  CapabilityRisk,
+  McpExposure,
+  StrataSessionSigner,
+} from "./types.js";
 
 export const PLATFORM_SCHEMA_VERSION = 2 as const;
 export const PLATFORM_CONTRACT_VERSION = "2.0" as const;
@@ -297,6 +302,100 @@ export interface PlatformAccountOrder {
   readonly limit_price_atoms: AtomicString;
   readonly original_size_atoms: AtomicString;
   readonly remaining_size_atoms: AtomicString;
+}
+
+export type PlatformOrderAction = "place" | "cancel" | "cancel_all";
+export type PlatformRestingOrderType = "good_until_cancelled" | "post_only";
+
+export type PlatformOrderChallengeInput =
+  | {
+      readonly action: "place";
+      readonly ownerWallet: string;
+      readonly sessionPublicKey: string;
+      readonly accountSequence: AtomicString | bigint;
+      readonly clientOrderId: string;
+      readonly side: PlatformTradeSide;
+      readonly orderType: PlatformRestingOrderType;
+      readonly limitPriceAtoms: AtomicString | bigint;
+      readonly sizeAtoms: AtomicString | bigint;
+    }
+  | {
+      readonly action: "cancel";
+      readonly ownerWallet: string;
+      readonly sessionPublicKey: string;
+      readonly orderId: PlatformEntityId;
+    }
+  | {
+      readonly action: "cancel_all";
+      readonly ownerWallet: string;
+      readonly sessionPublicKey: string;
+    };
+
+export interface PlatformOrderChallengeResponse {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly challenge_id: string;
+  readonly market_id: PlatformEntityId;
+  readonly action: PlatformOrderAction;
+  readonly order_ids: readonly PlatformEntityId[];
+  readonly authorization_payload_base64: string;
+  readonly server_time_ms: number;
+  readonly expires_at_ms: number;
+}
+
+export interface PlatformOrderPrepareInput {
+  readonly challengeId: string;
+  readonly authorizationSignature: string;
+}
+
+export interface PlatformOrderPrepareResponse {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly order_control_id: string;
+  readonly market_id: PlatformEntityId;
+  readonly action: PlatformOrderAction;
+  readonly order_ids: readonly PlatformEntityId[];
+  readonly transaction_base64: string;
+  readonly recent_blockhash: string;
+  readonly last_valid_block_height: number;
+  readonly expires_at_ms: number;
+}
+
+export interface PlatformOrderSubmitInput {
+  readonly orderControlId: string;
+  readonly signedTransactionBase64: string;
+  readonly idempotencyKey: string;
+}
+
+export interface PlatformOrderSubmitResponse {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly order_control_id: string;
+  readonly market_id: PlatformEntityId;
+  readonly action: PlatformOrderAction;
+  readonly order_ids: readonly PlatformEntityId[];
+  readonly signature: string;
+  readonly status: "submitted";
+}
+
+export interface PlatformOrderVerificationContext {
+  readonly challenge: PlatformOrderChallengeResponse;
+  readonly prepared: PlatformOrderPrepareResponse;
+  readonly ownerWallet: string;
+  readonly sessionPublicKey: string;
+}
+
+export type PlatformOrderExecuteOperation =
+  | Omit<Extract<PlatformOrderChallengeInput, { action: "place" }>, "sessionPublicKey">
+  | Omit<Extract<PlatformOrderChallengeInput, { action: "cancel" }>, "sessionPublicKey">
+  | Omit<Extract<PlatformOrderChallengeInput, { action: "cancel_all" }>, "sessionPublicKey">;
+
+export interface PlatformOrderExecuteInput {
+  readonly operation: PlatformOrderExecuteOperation;
+  readonly signer: StrataSessionSigner;
+  /** Mandatory owner-side verification before any transaction signature. */
+  verifyTransaction(context: PlatformOrderVerificationContext): void | Promise<void>;
+  readonly idempotencyKey?: string;
 }
 
 export interface PlatformAccountFill {

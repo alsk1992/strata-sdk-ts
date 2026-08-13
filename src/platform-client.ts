@@ -1,4 +1,12 @@
-import { StrataApiError, StrataContractError } from "./client.js";
+import {
+  base58Encode,
+  base58Decode,
+  canonicalPublicKey,
+  decodeBase64,
+  normalizeIdempotencyKey,
+  StrataApiError,
+  StrataContractError,
+} from "./client.js";
 import {
   platformAccountSnapshotResponse,
   platformAssetsResponse,
@@ -8,6 +16,9 @@ import {
   platformFeeScheduleResponse,
   platformMarketStatusResponse,
   platformMarketsResponse,
+  platformOrderChallengeResponse,
+  platformOrderPrepareResponse,
+  platformOrderSubmitResponse,
   platformTradesResponse,
 } from "./platform-validation.js";
 import {
@@ -36,6 +47,14 @@ import type {
   PlatformFeeScheduleResponse,
   PlatformMarketStatusResponse,
   PlatformMarketsResponse,
+  PlatformOrderChallengeInput,
+  PlatformOrderChallengeResponse,
+  PlatformOrderExecuteInput,
+  PlatformOrderExecuteOperation,
+  PlatformOrderPrepareInput,
+  PlatformOrderPrepareResponse,
+  PlatformOrderSubmitInput,
+  PlatformOrderSubmitResponse,
   PlatformTradesResponse,
 } from "./platform.js";
 import { DEFAULT_API_BASE } from "./types.js";
@@ -121,6 +140,26 @@ export interface PlatformAccountModule {
   ): Promise<PlatformAccountSubscription>;
 }
 
+export interface PlatformOrdersModule {
+  challenge(
+    marketId: string,
+    request: PlatformOrderChallengeInput,
+  ): Promise<PlatformOrderChallengeResponse>;
+  prepare(
+    marketId: string,
+    request: PlatformOrderPrepareInput,
+  ): Promise<PlatformOrderPrepareResponse>;
+  submit(
+    marketId: string,
+    request: PlatformOrderSubmitInput,
+  ): Promise<PlatformOrderSubmitResponse>;
+  /** Complete the challenge → external signatures → idempotent submit sequence. */
+  execute(
+    marketId: string,
+    request: PlatformOrderExecuteInput,
+  ): Promise<PlatformOrderSubmitResponse>;
+}
+
 /**
  * Modular SDK 2.0 client. Only currently supported public modules are exposed.
  */
@@ -134,6 +173,7 @@ export class StrataPlatformClient {
   readonly markets: PlatformMarketsModule;
   readonly books: PlatformBooksModule;
   readonly account: PlatformAccountModule;
+  readonly orders: PlatformOrdersModule;
   private capabilityCache?: {
     readonly value: PlatformDiscoveryResponse;
     readonly expiresAtMs: number;
@@ -179,6 +219,12 @@ export class StrataPlatformClient {
       snapshot: (signer, request) => this.accountSnapshot(signer, request),
       subscribe: (signer, handlers, streamOptions) =>
         this.subscribeAccount(signer, handlers, streamOptions),
+    };
+    this.orders = {
+      challenge: (marketId, request) => this.orderChallenge(marketId, request),
+      prepare: (marketId, request) => this.orderPrepare(marketId, request),
+      submit: (marketId, request) => this.orderSubmit(marketId, request),
+      execute: (marketId, request) => this.executeOrder(marketId, request),
     };
   }
 
@@ -337,6 +383,168 @@ export class StrataPlatformClient {
     );
   }
 
+  private async orderChallenge(
+    marketId: string,
+    request: PlatformOrderChallengeInput,
+  ): Promise<PlatformOrderChallengeResponse> {
+    await this.requireCapability("orders.prepare", "prepare");
+    const id = checkedMarketId(marketId);
+    const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
+    const sessionPublicKey = canonicalPublicKey(
+      request.sessionPublicKey,
+      "sessionPublicKey",
+    );
+    if (ownerWallet === sessionPublicKey) {
+      throw new TypeError("sessionPublicKey must be distinct from ownerWallet");
+    }
+    let body: Record<string, unknown>;
+    if (request.action === "place") {
+      if (request.side !== "buy" && request.side !== "sell") {
+        throw new TypeError("side must be buy or sell");
+      }
+      if (request.orderType !== "good_until_cancelled" && request.orderType !== "post_only") {
+        throw new TypeError("resting orderType must be good_until_cancelled or post_only");
+      }
+      const clientOrderId = checkedOpaqueInput(request.clientOrderId, "clientOrderId");
+      body = {
+        action: "place",
+        owner_wallet: ownerWallet,
+        session_public_key: sessionPublicKey,
+        account_sequence: checkedAtomic(request.accountSequence, "accountSequence", true),
+        client_order_id: clientOrderId,
+        side: request.side,
+        order_type: request.orderType,
+        limit_price_atoms: checkedAtomic(request.limitPriceAtoms, "limitPriceAtoms", false),
+        size_atoms: checkedAtomic(request.sizeAtoms, "sizeAtoms", false),
+      };
+    } else if (request.action === "cancel") {
+      body = {
+        action: "cancel",
+        owner_wallet: ownerWallet,
+        session_public_key: sessionPublicKey,
+        order_id: checkedOrderId(request.orderId),
+      };
+    } else if (request.action === "cancel_all") {
+      body = {
+        action: "cancel_all",
+        owner_wallet: ownerWallet,
+        session_public_key: sessionPublicKey,
+      };
+    } else {
+      throw new TypeError("order action is invalid");
+    }
+    const response = platformOrderChallengeResponse(
+      await this.post(`/v2/markets/${id}/orders/challenge`, body),
+    );
+    assertMarket(response.market_id, id);
+    if (response.action !== request.action) {
+      throw new StrataContractError("order challenge action does not match request");
+    }
+    return response;
+  }
+
+  private async orderPrepare(
+    marketId: string,
+    request: PlatformOrderPrepareInput,
+  ): Promise<PlatformOrderPrepareResponse> {
+    await this.requireCapability("orders.prepare", "prepare");
+    const id = checkedMarketId(marketId);
+    const challengeId = checkedHandle(request.challengeId, "challengeId", "oc_");
+    const authorizationSignature = checkedBase58Signature(
+      request.authorizationSignature,
+      "authorizationSignature",
+    );
+    const response = platformOrderPrepareResponse(
+      await this.post(`/v2/markets/${id}/orders/prepare`, {
+        challenge_id: challengeId,
+        authorization_signature: authorizationSignature,
+      }),
+    );
+    assertMarket(response.market_id, id);
+    return response;
+  }
+
+  private async orderSubmit(
+    marketId: string,
+    request: PlatformOrderSubmitInput,
+  ): Promise<PlatformOrderSubmitResponse> {
+    await this.requireCapability("orders.submit", "submit");
+    const id = checkedMarketId(marketId);
+    const orderControlId = checkedHandle(
+      request.orderControlId,
+      "orderControlId",
+      "or_",
+    );
+    const signedTransactionBase64 = request.signedTransactionBase64.trim();
+    decodeBase64(signedTransactionBase64);
+    const response = platformOrderSubmitResponse(
+      await this.post(`/v2/markets/${id}/orders/submit`, {
+        order_control_id: orderControlId,
+        signed_transaction_base64: signedTransactionBase64,
+        idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
+      }),
+    );
+    assertMarket(response.market_id, id);
+    if (response.order_control_id !== orderControlId) {
+      throw new StrataContractError("order receipt does not match submitted control ID");
+    }
+    return response;
+  }
+
+  private async executeOrder(
+    marketId: string,
+    request: PlatformOrderExecuteInput,
+  ): Promise<PlatformOrderSubmitResponse> {
+    if (typeof request.verifyTransaction !== "function") {
+      throw new TypeError("verifyTransaction is required");
+    }
+    const signerPublicKey = canonicalPublicKey(request.signer.publicKey, "signer.publicKey");
+    if (typeof request.signer.signMessage !== "function"
+        || typeof request.signer.signTransaction !== "function") {
+      throw new TypeError("signer must provide signMessage and signTransaction");
+    }
+    const challenge = await this.orderChallenge(marketId, {
+      ...request.operation,
+      sessionPublicKey: signerPublicKey,
+    } as PlatformOrderChallengeInput);
+    const authorization = await validateOrderAuthorization(
+      challenge,
+      request.operation,
+      signerPublicKey,
+    );
+    const signature = await request.signer.signMessage(authorization);
+    if (!(signature instanceof Uint8Array) || signature.length !== 64) {
+      throw new StrataContractError("order authorization signature must contain 64 bytes");
+    }
+    const prepared = await this.orderPrepare(marketId, {
+      challengeId: challenge.challenge_id,
+      authorizationSignature: base58Encode(signature),
+    });
+    if (
+      prepared.action !== challenge.action
+      || prepared.order_ids.length !== challenge.order_ids.length
+      || prepared.order_ids.some((orderId, index) => orderId !== challenge.order_ids[index])
+      || prepared.expires_at_ms !== challenge.expires_at_ms
+    ) {
+      throw new StrataContractError("prepared order control changed the signed bindings");
+    }
+    await request.verifyTransaction({
+      challenge,
+      prepared,
+      ownerWallet: canonicalPublicKey(request.operation.ownerWallet, "ownerWallet"),
+      sessionPublicKey: signerPublicKey,
+    });
+    const signedTransactionBase64 = await request.signer.signTransaction(
+      prepared.transaction_base64,
+    );
+    decodeBase64(signedTransactionBase64);
+    return this.orderSubmit(marketId, {
+      orderControlId: prepared.order_control_id,
+      signedTransactionBase64,
+      idempotencyKey: request.idempotencyKey ?? prepared.order_control_id,
+    });
+  }
+
   private async accountMarketIds(requested?: readonly string[]): Promise<readonly string[]> {
     if (requested !== undefined) {
       if (requested.length === 0) throw new TypeError("marketIds must not be empty");
@@ -365,6 +573,18 @@ export class StrataPlatformClient {
     const discovery = await this.readDiscovery(false);
     const capability = discovery.capabilities.find((item) => item.id === capabilityId);
     if (!capability || capability.risk !== "read" || !capability.transports.includes(transport)) {
+      throw new StrataContractError(`live capability is not available: ${capabilityId}`);
+    }
+    return discovery;
+  }
+
+  private async requireCapability(
+    capabilityId: string,
+    risk: "prepare" | "submit",
+  ): Promise<PlatformDiscoveryResponse> {
+    const discovery = await this.readDiscovery(false);
+    const capability = discovery.capabilities.find((item) => item.id === capabilityId);
+    if (!capability || capability.risk !== risk || !capability.transports.includes("http")) {
       throw new StrataContractError(`live capability is not available: ${capabilityId}`);
     }
     return discovery;
@@ -405,6 +625,43 @@ export class StrataPlatformClient {
       clearTimeout(timeout);
     }
   }
+
+  private async post(path: string, body: Record<string, unknown>): Promise<unknown> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const response = await this.fetch(`${this.apiBase}${path}`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      let value: unknown;
+      try {
+        value = await response.json();
+      } catch {
+        value = null;
+      }
+      if (!response.ok) {
+        const error = parsePublicError(value);
+        throw new StrataApiError(
+          response.status,
+          error?.code ?? "request_failed",
+          error?.message ?? "Strata could not complete the request.",
+          error?.retryable ?? response.status >= 500,
+        );
+      }
+      return value;
+    } catch (error) {
+      if (error instanceof StrataApiError) throw error;
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new StrataApiError(0, "timeout", "Strata request timed out.", true);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 function checkedMarketId(value: string): string {
@@ -413,6 +670,54 @@ function checkedMarketId(value: string): string {
     throw new TypeError("marketId must be an opaque Strata market ID");
   }
   return marketId;
+}
+
+function checkedAtomic(
+  value: string | bigint,
+  field: string,
+  allowZero: boolean,
+): string {
+  const normalized = typeof value === "bigint" ? value.toString() : value.trim();
+  if (!/^(?:0|[1-9][0-9]*)$/.test(normalized) || (!allowZero && normalized === "0")) {
+    throw new TypeError(`${field} must be a canonical unsigned atomic value`);
+  }
+  return normalized;
+}
+
+function checkedOpaqueInput(value: string, field: string): string {
+  const normalized = value.trim();
+  if (normalized.length < 1 || normalized.length > 64 || !/^[A-Za-z0-9._-]+$/.test(normalized)) {
+    throw new TypeError(`${field} must contain 1-64 URL-safe characters`);
+  }
+  return normalized;
+}
+
+function checkedOrderId(value: string): string {
+  const orderId = value.trim();
+  if (!/^order_[0-9a-f]{32}$/.test(orderId)) {
+    throw new TypeError("orderId must be an opaque Strata order ID");
+  }
+  return orderId;
+}
+
+function checkedHandle(
+  value: string,
+  field: string,
+  prefix: "oc_" | "or_",
+): string {
+  const handle = value.trim();
+  if (!new RegExp(`^${prefix}[0-9a-f]{32}$`).test(handle)) {
+    throw new TypeError(`${field} must be an opaque Strata handle`);
+  }
+  return handle;
+}
+
+function checkedBase58Signature(value: string, field: string): string {
+  const signature = value.trim();
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) {
+    throw new TypeError(`${field} must be a canonical base58 Ed25519 signature`);
+  }
+  return signature;
 }
 
 function assertMarket(actual: string, expected: string): void {
@@ -500,4 +805,172 @@ function parsePublicError(value: unknown): {
     message: fields.message,
     retryable: fields.retryable,
   };
+}
+
+async function validateOrderAuthorization(
+  challenge: PlatformOrderChallengeResponse,
+  operation: PlatformOrderExecuteOperation,
+  sessionPublicKey: string,
+): Promise<Uint8Array> {
+  const bytes = decodeBase64(challenge.authorization_payload_base64);
+  const encoder = new TextEncoder();
+  let cursor = 0;
+  const domain = encoder.encode("strata-platform-order-control:v1\0");
+  expectBytes(bytes, cursor, domain, "order authorization domain");
+  cursor += domain.length;
+  cursor += 32; // Canonical market identity; the public API intentionally exposes only its opaque ID.
+  const ownerWallet = canonicalPublicKey(operation.ownerWallet, "ownerWallet");
+  expectBytes(
+    bytes,
+    cursor,
+    base58Decode(ownerWallet, 32, "ownerWallet"),
+    "order authorization owner",
+  );
+  cursor += 32;
+  expectBytes(
+    bytes,
+    cursor,
+    base58Decode(sessionPublicKey, 32, "sessionPublicKey"),
+    "order authorization session",
+  );
+  cursor += 32;
+  const actionByte = readByte(bytes, cursor, "order authorization action");
+  cursor += 1;
+  const expectedAction = operation.action === "place" ? 0 : operation.action === "cancel" ? 1 : 2;
+  if (actionByte !== expectedAction || challenge.action !== operation.action) {
+    throw new StrataContractError("order authorization action changed");
+  }
+  const derivedOrderIds: string[] = [];
+  if (operation.action === "place") {
+    expectU64Value(bytes, cursor, operation.accountSequence, "order account sequence");
+    cursor += 8;
+    const clientLength = readU16(bytes, cursor, "client order ID length");
+    cursor += 2;
+    const clientId = encoder.encode(checkedOpaqueInput(operation.clientOrderId, "clientOrderId"));
+    if (clientLength !== clientId.length) {
+      throw new StrataContractError("client order ID length changed");
+    }
+    expectBytes(bytes, cursor, clientId, "client order ID");
+    cursor += clientLength;
+    const side = readByte(bytes, cursor, "order side");
+    cursor += 1;
+    if (side !== (operation.side === "buy" ? 0 : 1)) {
+      throw new StrataContractError("order side changed");
+    }
+    const orderType = readByte(bytes, cursor, "order type");
+    cursor += 1;
+    if (orderType !== (operation.orderType === "good_until_cancelled" ? 0 : 3)) {
+      throw new StrataContractError("order type changed");
+    }
+    expectU64Value(bytes, cursor, operation.limitPriceAtoms, "order limit price");
+    cursor += 8;
+    expectU64Value(bytes, cursor, operation.sizeAtoms, "order size");
+    cursor += 8;
+    const pda = take(bytes, cursor, 32, "order identity");
+    cursor += 32;
+    derivedOrderIds.push(await opaqueProductId(
+      "order",
+      `${challenge.market_id}:${base58Encode(pda)}`,
+    ));
+  } else {
+    const count = readByte(bytes, cursor, "cancel order count");
+    cursor += 1;
+    if (count < 1 || count > 6 || (operation.action === "cancel" && count !== 1)) {
+      throw new StrataContractError("cancel order count changed");
+    }
+    for (let index = 0; index < count; index += 1) {
+      const pda = take(bytes, cursor, 32, `cancel order ${index}`);
+      cursor += 32;
+      const rentSource = readByte(bytes, cursor, `cancel rent source ${index}`);
+      cursor += 1;
+      if (rentSource !== 0 && rentSource !== 1) {
+        throw new StrataContractError("cancel rent source is invalid");
+      }
+      derivedOrderIds.push(await opaqueProductId(
+        "order",
+        `${challenge.market_id}:${base58Encode(pda)}`,
+      ));
+    }
+    if (operation.action === "cancel" && derivedOrderIds[0] !== checkedOrderId(operation.orderId)) {
+      throw new StrataContractError("cancel order identity changed");
+    }
+  }
+  if (
+    derivedOrderIds.length !== challenge.order_ids.length
+    || derivedOrderIds.some((orderId, index) => orderId !== challenge.order_ids[index])
+  ) {
+    throw new StrataContractError("order authorization opaque identities changed");
+  }
+  cursor += 32; // Recent blockhash, verified again by the mandatory transaction verifier.
+  cursor += 8; // Last valid block height.
+  expectU64Value(bytes, cursor, String(challenge.expires_at_ms), "order authorization expiry");
+  cursor += 8;
+  const nonce = take(bytes, cursor, 16, "order authorization nonce");
+  cursor += 16;
+  if (hexBytes(nonce) !== challenge.challenge_id.slice(3)) {
+    throw new StrataContractError("order challenge nonce changed");
+  }
+  cursor += 16; // Server process epoch.
+  if (cursor !== bytes.length) {
+    throw new StrataContractError("order authorization contains unrecognized fields");
+  }
+  return bytes;
+}
+
+function take(source: Uint8Array, offset: number, length: number, field: string): Uint8Array {
+  const value = source.slice(offset, offset + length);
+  if (value.length !== length) throw new StrataContractError(`${field} is missing`);
+  return value;
+}
+
+function expectBytes(
+  source: Uint8Array,
+  offset: number,
+  expected: Uint8Array,
+  field: string,
+): void {
+  const actual = take(source, offset, expected.length, field);
+  if (actual.some((byte, index) => byte !== expected[index])) {
+    throw new StrataContractError(`${field} changed`);
+  }
+}
+
+function readByte(source: Uint8Array, offset: number, field: string): number {
+  const value = source[offset];
+  if (value === undefined) throw new StrataContractError(`${field} is missing`);
+  return value;
+}
+
+function readU16(source: Uint8Array, offset: number, field: string): number {
+  take(source, offset, 2, field);
+  return new DataView(source.buffer, source.byteOffset + offset, 2).getUint16(0, true);
+}
+
+function readU64Value(source: Uint8Array, offset: number, field: string): bigint {
+  take(source, offset, 8, field);
+  return new DataView(source.buffer, source.byteOffset + offset, 8).getBigUint64(0, true);
+}
+
+function expectU64Value(
+  source: Uint8Array,
+  offset: number,
+  expected: string | bigint,
+  field: string,
+): void {
+  if (readU64Value(source, offset, field) !== BigInt(expected)) {
+    throw new StrataContractError(`${field} changed`);
+  }
+}
+
+function hexBytes(value: Uint8Array): string {
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function opaqueProductId(kind: "order", value: string): Promise<string> {
+  if (!globalThis.crypto?.subtle) {
+    throw new StrataContractError("Web Crypto is required to verify opaque order identity");
+  }
+  const prefix = new TextEncoder().encode(`strata-sdk-product:v1\0${kind}\0${value}`);
+  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", prefix));
+  return `${kind}_${hexBytes(digest.slice(0, 16))}`;
 }
