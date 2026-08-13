@@ -165,6 +165,8 @@ const receipt = await strata.orders.execute(market.market_id, {
 ```
 
 Use `orders.challenge`, `orders.prepare`, and `orders.submit` when an agent
-runtime needs to broker each boundary separately. All market and order IDs are
-opaque, cancel-all is bounded to the exact order set in its signed challenge,
-and submission is idempotent.
+runtime needs to broker each boundary separately. If submission times out, call
+`orders.status` with the same control ID and idempotency key to recover the
+durable result across process restarts. All market and order IDs are opaque,
+cancel-all is bounded to the exact order set in its signed challenge, and
+submission is idempotent.

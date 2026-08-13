@@ -321,6 +321,20 @@
       "summary": "Receive the opaque order IDs, transaction signature, and submitted status.",
       "required_capabilities": [],
       "available": true
+    },
+    {
+      "id": "recover_order_status",
+      "kind": "read",
+      "summary": "Recover durable submitting, submitted, or failed status after a timeout or restart.",
+      "required_capabilities": [
+        "orders.submit"
+      ],
+      "available": false,
+      "operation": {
+        "method": "POST",
+        "path": "/v2/markets/{market_id}/orders/status",
+        "mcp_tool": "strata_order_status"
+      }
     }
   ],
   "edges": [
@@ -453,6 +467,16 @@
       "from": "submit_order_control",
       "to": "receive_order_receipt",
       "condition": "the control ID and idempotency key match"
+    },
+    {
+      "from": "submit_order_control",
+      "to": "recover_order_status",
+      "condition": "the submission result is ambiguous or either process restarted"
+    },
+    {
+      "from": "recover_order_status",
+      "to": "receive_order_receipt",
+      "condition": "durable status is submitted"
     }
   ]
 }
