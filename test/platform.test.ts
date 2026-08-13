@@ -433,7 +433,7 @@ test("fails closed when a v2 read response gains an unreviewed field", async () 
   await assert.rejects(client.assets.list(), /unrecognized or missing fields/);
 });
 
-test("exposes product-level resting-order challenge, prepare, and idempotent submit", async () => {
+test("exposes resting-order prepare, idempotent submit, and durable status", async () => {
   const capabilities = await v2Fixture("platform-capabilities");
   (capabilities.capabilities as Array<Record<string, unknown>>).push(
     {
@@ -454,6 +454,7 @@ test("exposes product-level resting-order challenge, prepare, and idempotent sub
   const challenge = await v2Fixture("order-challenge");
   const prepared = await v2Fixture("order-prepare");
   const submitted = await v2Fixture("order-submit");
+  const status = await v2Fixture("order-status");
   const requests: Array<{ path: string; body: unknown }> = [];
   const client = new StrataPlatformClient({
     apiBase: "https://example.test",
@@ -463,6 +464,7 @@ test("exposes product-level resting-order challenge, prepare, and idempotent sub
       requests.push({ path, body: JSON.parse(String(init?.body)) });
       if (path.endsWith("/challenge")) return Response.json(challenge);
       if (path.endsWith("/prepare")) return Response.json(prepared);
+      if (path.endsWith("/status")) return Response.json(status);
       return Response.json(submitted);
     },
   });
@@ -490,14 +492,20 @@ test("exposes product-level resting-order challenge, prepare, and idempotent sub
     signedTransactionBase64: "AQIDBA==",
     idempotencyKey: "agent-42-attempt-1",
   });
+  const recovered = await client.orders.status(marketId, {
+    orderControlId: tx.order_control_id,
+    idempotencyKey: "agent-42-attempt-1",
+  });
 
   assert.equal(bound.action, "place");
   assert.deepEqual(tx.order_ids, bound.order_ids);
   assert.equal(receipt.status, "submitted");
+  assert.equal(recovered.status, "submitting");
   assert.deepEqual(requests.map((request) => request.path), [
     `/v2/markets/${marketId}/orders/challenge`,
     `/v2/markets/${marketId}/orders/prepare`,
     `/v2/markets/${marketId}/orders/submit`,
+    `/v2/markets/${marketId}/orders/status`,
   ]);
   assert.deepEqual((requests[0]?.body as Record<string, unknown>), {
     action: "place",

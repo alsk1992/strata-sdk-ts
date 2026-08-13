@@ -22,7 +22,9 @@ import {
   type PlatformMarketsResponse,
   type PlatformOrderAction,
   type PlatformOrderChallengeResponse,
+  type PlatformOrderControlStatus,
   type PlatformOrderPrepareResponse,
+  type PlatformOrderStatusResponse,
   type PlatformOrderSubmitResponse,
   type PlatformTrade,
   type PlatformTradesResponse,
@@ -55,6 +57,7 @@ const ORDER_TYPES = [
 ] as const;
 const FILL_SETTLEMENT_STATES = ["pending", "confirmed", "failed"] as const;
 const ORDER_ACTIONS = ["place", "cancel", "cancel_all"] as const;
+const ORDER_CONTROL_STATUSES = ["submitting", "submitted", "failed"] as const;
 
 function object(value: unknown, field: string): JsonObject {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -901,5 +904,46 @@ export function platformOrderSubmitResponse(value: unknown): PlatformOrderSubmit
     order_ids: opaqueOrderIds(response.order_ids, "order_ids"),
     signature,
     status: "submitted",
+  };
+}
+
+export function platformOrderStatusResponse(value: unknown): PlatformOrderStatusResponse {
+  const response = object(value, "order status response");
+  exactKeys(response, [
+    "schema_version", "contract_version", "order_control_id", "market_id", "action",
+    "order_ids", "signature", "status", "failure_code", "updated_at_ms",
+  ], "order status response");
+  version(response);
+  if (!ORDER_CONTROL_STATUSES.includes(
+    response.status as typeof ORDER_CONTROL_STATUSES[number],
+  )) {
+    throw new Error("order control status is invalid");
+  }
+  const status = response.status as PlatformOrderControlStatus;
+  const signature = string(response.signature, "signature");
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) {
+    throw new Error("signature is invalid");
+  }
+  let failureCode: string | null = null;
+  if (response.failure_code !== null) {
+    failureCode = string(response.failure_code, "failure_code");
+    if (!/^[a-z][a-z0-9_]{2,63}$/.test(failureCode)) {
+      throw new Error("failure_code is invalid");
+    }
+  }
+  if ((status === "failed") !== (failureCode !== null)) {
+    throw new Error("failure_code does not match order status");
+  }
+  return {
+    schema_version: PLATFORM_SCHEMA_VERSION,
+    contract_version: PLATFORM_CONTRACT_VERSION,
+    order_control_id: opaqueHandle(response.order_control_id, "order_control_id", "or_"),
+    market_id: marketId(response.market_id),
+    action: orderAction(response.action, "action"),
+    order_ids: opaqueOrderIds(response.order_ids, "order_ids"),
+    signature,
+    status,
+    failure_code: failureCode,
+    updated_at_ms: integer(response.updated_at_ms, "updated_at_ms"),
   };
 }

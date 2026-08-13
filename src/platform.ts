@@ -378,6 +378,26 @@ export interface PlatformOrderSubmitResponse {
   readonly status: "submitted";
 }
 
+export interface PlatformOrderStatusInput {
+  readonly orderControlId: string;
+  readonly idempotencyKey: string;
+}
+
+export type PlatformOrderControlStatus = "submitting" | "submitted" | "failed";
+
+export interface PlatformOrderStatusResponse {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly order_control_id: string;
+  readonly market_id: PlatformEntityId;
+  readonly action: PlatformOrderAction;
+  readonly order_ids: readonly PlatformEntityId[];
+  readonly signature: string;
+  readonly status: PlatformOrderControlStatus;
+  readonly failure_code: string | null;
+  readonly updated_at_ms: number;
+}
+
 export interface PlatformOrderVerificationContext {
   readonly challenge: PlatformOrderChallengeResponse;
   readonly prepared: PlatformOrderPrepareResponse;

@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "order_control_id": "or_44444444444444444444444444444444",
+  "market_id": "market_22222222222222222222222222222222",
+  "action": "place",
+  "order_ids": ["order_33333333333333333333333333333333"],
+  "signature": "1111111111111111111111111111111111111111111111111111111111111111",
+  "status": "submitting",
+  "failure_code": null,
+  "updated_at_ms": 1786634000000
+}

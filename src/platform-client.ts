@@ -18,6 +18,7 @@ import {
   platformMarketsResponse,
   platformOrderChallengeResponse,
   platformOrderPrepareResponse,
+  platformOrderStatusResponse,
   platformOrderSubmitResponse,
   platformTradesResponse,
 } from "./platform-validation.js";
@@ -53,6 +54,8 @@ import type {
   PlatformOrderExecuteOperation,
   PlatformOrderPrepareInput,
   PlatformOrderPrepareResponse,
+  PlatformOrderStatusInput,
+  PlatformOrderStatusResponse,
   PlatformOrderSubmitInput,
   PlatformOrderSubmitResponse,
   PlatformTradesResponse,
@@ -153,6 +156,10 @@ export interface PlatformOrdersModule {
     marketId: string,
     request: PlatformOrderSubmitInput,
   ): Promise<PlatformOrderSubmitResponse>;
+  status(
+    marketId: string,
+    request: PlatformOrderStatusInput,
+  ): Promise<PlatformOrderStatusResponse>;
   /** Complete the challenge → external signatures → idempotent submit sequence. */
   execute(
     marketId: string,
@@ -224,6 +231,7 @@ export class StrataPlatformClient {
       challenge: (marketId, request) => this.orderChallenge(marketId, request),
       prepare: (marketId, request) => this.orderPrepare(marketId, request),
       submit: (marketId, request) => this.orderSubmit(marketId, request),
+      status: (marketId, request) => this.orderStatus(marketId, request),
       execute: (marketId, request) => this.executeOrder(marketId, request),
     };
   }
@@ -487,6 +495,30 @@ export class StrataPlatformClient {
     assertMarket(response.market_id, id);
     if (response.order_control_id !== orderControlId) {
       throw new StrataContractError("order receipt does not match submitted control ID");
+    }
+    return response;
+  }
+
+  private async orderStatus(
+    marketId: string,
+    request: PlatformOrderStatusInput,
+  ): Promise<PlatformOrderStatusResponse> {
+    await this.requireCapability("orders.submit", "submit");
+    const id = checkedMarketId(marketId);
+    const orderControlId = checkedHandle(
+      request.orderControlId,
+      "orderControlId",
+      "or_",
+    );
+    const response = platformOrderStatusResponse(
+      await this.post(`/v2/markets/${id}/orders/status`, {
+        order_control_id: orderControlId,
+        idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
+      }),
+    );
+    assertMarket(response.market_id, id);
+    if (response.order_control_id !== orderControlId) {
+      throw new StrataContractError("order status does not match control ID");
     }
     return response;
   }
