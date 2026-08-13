@@ -258,6 +258,69 @@
       "summary": "Receive the execution ID, Solana signature, and submitted status.",
       "required_capabilities": [],
       "available": true
+    },
+    {
+      "id": "request_order_challenge",
+      "kind": "prepare",
+      "summary": "Bind a product-level place, cancel, or cancel-all operation to canonical authorization bytes.",
+      "required_capabilities": [
+        "orders.prepare"
+      ],
+      "available": false,
+      "operation": {
+        "method": "POST",
+        "path": "/v2/markets/{market_id}/orders/challenge",
+        "mcp_tool": "strata_order_challenge"
+      }
+    },
+    {
+      "id": "sign_order_authorization",
+      "kind": "external_signature",
+      "summary": "The agent owner's configured session signer verifies the exact order set and signs externally.",
+      "required_capabilities": [],
+      "available": true
+    },
+    {
+      "id": "prepare_order_control",
+      "kind": "prepare",
+      "summary": "Exchange the order authorization signature for a partially signed transaction.",
+      "required_capabilities": [
+        "orders.prepare"
+      ],
+      "available": false,
+      "operation": {
+        "method": "POST",
+        "path": "/v2/markets/{market_id}/orders/prepare",
+        "mcp_tool": "strata_order_prepare"
+      }
+    },
+    {
+      "id": "sign_order_transaction",
+      "kind": "external_signature",
+      "summary": "The external session signer verifies and fills only its transaction signature slot.",
+      "required_capabilities": [],
+      "available": true
+    },
+    {
+      "id": "submit_order_control",
+      "kind": "submit",
+      "summary": "Submit the unchanged signed order transaction with an idempotency key.",
+      "required_capabilities": [
+        "orders.submit"
+      ],
+      "available": false,
+      "operation": {
+        "method": "POST",
+        "path": "/v2/markets/{market_id}/orders/submit",
+        "mcp_tool": "strata_order_submit"
+      }
+    },
+    {
+      "id": "receive_order_receipt",
+      "kind": "receipt",
+      "summary": "Receive the opaque order IDs, transaction signature, and submitted status.",
+      "required_capabilities": [],
+      "available": true
     }
   ],
   "edges": [
@@ -360,6 +423,36 @@
       "from": "submit_execution",
       "to": "receive_receipt",
       "condition": "the execution ID and idempotency key match"
+    },
+    {
+      "from": "discover_platform_markets",
+      "to": "request_order_challenge",
+      "condition": "orders.prepare is enabled and the market accepts order control"
+    },
+    {
+      "from": "request_order_challenge",
+      "to": "sign_order_authorization",
+      "condition": "the action and exact opaque order set match owner intent"
+    },
+    {
+      "from": "sign_order_authorization",
+      "to": "prepare_order_control",
+      "condition": "a valid external authorization signature is available"
+    },
+    {
+      "from": "prepare_order_control",
+      "to": "sign_order_transaction",
+      "condition": "the prepared transaction preserves the signed order bindings"
+    },
+    {
+      "from": "sign_order_transaction",
+      "to": "submit_order_control",
+      "condition": "orders.submit is enabled and the signed transaction is unmodified"
+    },
+    {
+      "from": "submit_order_control",
+      "to": "receive_order_receipt",
+      "condition": "the control ID and idempotency key match"
     }
   ]
 }

@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 import {
+  base58Decode,
+  base58Encode,
   StrataContractError,
   StrataPlatformClient,
   type PlatformAccountView,
@@ -429,4 +431,240 @@ test("fails closed when a v2 read response gains an unreviewed field", async () 
   });
 
   await assert.rejects(client.assets.list(), /unrecognized or missing fields/);
+});
+
+test("exposes product-level resting-order challenge, prepare, and idempotent submit", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  (capabilities.capabilities as Array<Record<string, unknown>>).push(
+    {
+      id: "orders.prepare",
+      risk: "prepare",
+      required_scope: "orders:prepare",
+      transports: ["http", "mcp"],
+      mcp_exposure: "prepare",
+    },
+    {
+      id: "orders.submit",
+      risk: "submit",
+      required_scope: "orders:submit",
+      transports: ["http", "mcp"],
+      mcp_exposure: "submit",
+    },
+  );
+  const challenge = await v2Fixture("order-challenge");
+  const prepared = await v2Fixture("order-prepare");
+  const submitted = await v2Fixture("order-submit");
+  const requests: Array<{ path: string; body: unknown }> = [];
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      requests.push({ path, body: JSON.parse(String(init?.body)) });
+      if (path.endsWith("/challenge")) return Response.json(challenge);
+      if (path.endsWith("/prepare")) return Response.json(prepared);
+      return Response.json(submitted);
+    },
+  });
+  const marketId = "market_22222222222222222222222222222222";
+  const ownerWallet = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
+  const sessionPublicKey = "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2";
+
+  const bound = await client.orders.challenge(marketId, {
+    action: "place",
+    ownerWallet,
+    sessionPublicKey,
+    accountSequence: 7n,
+    clientOrderId: "agent-42",
+    side: "buy",
+    orderType: "post_only",
+    limitPriceAtoms: 150_000_000n,
+    sizeAtoms: 1_000_000_000n,
+  });
+  const tx = await client.orders.prepare(marketId, {
+    challengeId: bound.challenge_id,
+    authorizationSignature: "2".repeat(64),
+  });
+  const receipt = await client.orders.submit(marketId, {
+    orderControlId: tx.order_control_id,
+    signedTransactionBase64: "AQIDBA==",
+    idempotencyKey: "agent-42-attempt-1",
+  });
+
+  assert.equal(bound.action, "place");
+  assert.deepEqual(tx.order_ids, bound.order_ids);
+  assert.equal(receipt.status, "submitted");
+  assert.deepEqual(requests.map((request) => request.path), [
+    `/v2/markets/${marketId}/orders/challenge`,
+    `/v2/markets/${marketId}/orders/prepare`,
+    `/v2/markets/${marketId}/orders/submit`,
+  ]);
+  assert.deepEqual((requests[0]?.body as Record<string, unknown>), {
+    action: "place",
+    owner_wallet: ownerWallet,
+    session_public_key: sessionPublicKey,
+    account_sequence: "7",
+    client_order_id: "agent-42",
+    side: "buy",
+    order_type: "post_only",
+    limit_price_atoms: "150000000",
+    size_atoms: "1000000000",
+  });
+  assert.equal("venue" in (requests[0]?.body as Record<string, unknown>), false);
+  assert.equal("program" in (requests[0]?.body as Record<string, unknown>), false);
+});
+
+test("executes a resting order only after byte-exact authorization and transaction verification", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  (capabilities.capabilities as Array<Record<string, unknown>>).push(
+    {
+      id: "orders.prepare",
+      risk: "prepare",
+      required_scope: "orders:prepare",
+      transports: ["http", "mcp"],
+      mcp_exposure: "prepare",
+    },
+    {
+      id: "orders.submit",
+      risk: "submit",
+      required_scope: "orders:submit",
+      transports: ["http", "mcp"],
+      mcp_exposure: "submit",
+    },
+  );
+  const marketId = "market_22222222222222222222222222222222";
+  const ownerWallet = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
+  const sessionPublicKey = "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2";
+  const orderPda = new Uint8Array(32).fill(3);
+  const nonce = new Uint8Array(16).fill(4);
+  const recentBlockhash = new Uint8Array(32).fill(5);
+  const expiresAtMs = 1_786_550_460_000;
+  const encoder = new TextEncoder();
+  const u16 = (value: number): Uint8Array => {
+    const bytes = new Uint8Array(2);
+    new DataView(bytes.buffer).setUint16(0, value, true);
+    return bytes;
+  };
+  const u64 = (value: bigint): Uint8Array => {
+    const bytes = new Uint8Array(8);
+    new DataView(bytes.buffer).setBigUint64(0, value, true);
+    return bytes;
+  };
+  const join = (...parts: readonly Uint8Array[]): Uint8Array => {
+    const output = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
+    let offset = 0;
+    for (const part of parts) {
+      output.set(part, offset);
+      offset += part.length;
+    }
+    return output;
+  };
+  const clientOrderId = encoder.encode("agent-42");
+  const authorization = join(
+    encoder.encode("strata-platform-order-control:v1\0"),
+    new Uint8Array(32).fill(9),
+    base58Decode(ownerWallet, 32, "ownerWallet"),
+    base58Decode(sessionPublicKey, 32, "sessionPublicKey"),
+    new Uint8Array([0]),
+    u64(7n),
+    u16(clientOrderId.length),
+    clientOrderId,
+    new Uint8Array([0, 3]),
+    u64(150_000_000n),
+    u64(1_000_000_000n),
+    orderPda,
+    recentBlockhash,
+    u64(400_000_000n),
+    u64(BigInt(expiresAtMs)),
+    nonce,
+    new Uint8Array(16).fill(6),
+  );
+  const opaqueInput = encoder.encode(
+    `strata-sdk-product:v1\0order\0${marketId}:${base58Encode(orderPda)}`,
+  );
+  const opaqueDigest = new Uint8Array(await crypto.subtle.digest("SHA-256", opaqueInput));
+  const orderId = `order_${Array.from(opaqueDigest.slice(0, 16), (byte) =>
+    byte.toString(16).padStart(2, "0")).join("")}`;
+  const challenge = {
+    schema_version: 2,
+    contract_version: "2.0",
+    challenge_id: `oc_${Array.from(nonce, (byte) => byte.toString(16).padStart(2, "0")).join("")}`,
+    market_id: marketId,
+    action: "place",
+    order_ids: [orderId],
+    authorization_payload_base64: Buffer.from(authorization).toString("base64"),
+    server_time_ms: expiresAtMs - 60_000,
+    expires_at_ms: expiresAtMs,
+  };
+  const prepared = {
+    schema_version: 2,
+    contract_version: "2.0",
+    order_control_id: "or_44444444444444444444444444444444",
+    market_id: marketId,
+    action: "place",
+    order_ids: [orderId],
+    transaction_base64: "AQIDBA==",
+    recent_blockhash: base58Encode(recentBlockhash),
+    last_valid_block_height: 400_000_000,
+    expires_at_ms: expiresAtMs,
+  };
+  const submitted = {
+    schema_version: 2,
+    contract_version: "2.0",
+    order_control_id: prepared.order_control_id,
+    market_id: marketId,
+    action: "place",
+    order_ids: [orderId],
+    signature: "1".repeat(64),
+    status: "submitted",
+  };
+  const signedMessages: Uint8Array[] = [];
+  let verified = false;
+  let submitBody: Record<string, unknown> | undefined;
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      if (path.endsWith("/challenge")) return Response.json(challenge);
+      if (path.endsWith("/prepare")) return Response.json(prepared);
+      submitBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return Response.json(submitted);
+    },
+  });
+  const receipt = await client.orders.execute(marketId, {
+    operation: {
+      action: "place",
+      ownerWallet,
+      accountSequence: 7n,
+      clientOrderId: "agent-42",
+      side: "buy",
+      orderType: "post_only",
+      limitPriceAtoms: 150_000_000n,
+      sizeAtoms: 1_000_000_000n,
+    },
+    signer: {
+      publicKey: sessionPublicKey,
+      signMessage: async (message) => {
+        signedMessages.push(message);
+        return new Uint8Array(64).fill(7);
+      },
+      signTransaction: async (transaction) => {
+        assert.equal(verified, true);
+        assert.equal(transaction, prepared.transaction_base64);
+        return "BQYHCA==";
+      },
+    },
+    verifyTransaction: ({ challenge: bound, prepared: transaction, ownerWallet: owner }) => {
+      assert.equal(bound.order_ids[0], orderId);
+      assert.equal(transaction.recent_blockhash, base58Encode(recentBlockhash));
+      assert.equal(owner, ownerWallet);
+      verified = true;
+    },
+  });
+
+  assert.deepEqual(signedMessages, [authorization]);
+  assert.equal(verified, true);
+  assert.equal(submitBody?.signed_transaction_base64, "BQYHCA==");
+  assert.equal(receipt.status, "submitted");
 });

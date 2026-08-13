@@ -61,6 +61,26 @@
       "default_enabled": true,
       "public_sdk": true,
       "mcp_exposure": "submit"
+    },
+    {
+      "id": "orders.prepare",
+      "introduced_in": "1.1",
+      "stability": "beta",
+      "required_scope": "orders:prepare",
+      "risk": "prepare",
+      "default_enabled": false,
+      "public_sdk": true,
+      "mcp_exposure": "prepare"
+    },
+    {
+      "id": "orders.submit",
+      "introduced_in": "1.1",
+      "stability": "beta",
+      "required_scope": "orders:submit",
+      "risk": "submit",
+      "default_enabled": false,
+      "public_sdk": true,
+      "mcp_exposure": "submit"
     }
   ]
 }

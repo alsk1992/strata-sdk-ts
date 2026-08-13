@@ -456,7 +456,7 @@ function takeEqual(
   }
 }
 
-function canonicalPublicKey(value: string, field: string): string {
+export function canonicalPublicKey(value: string, field: string): string {
   const trimmed = value.trim();
   const bytes = base58Decode32(trimmed);
   if (base58Encode(bytes) !== trimmed) {
@@ -477,7 +477,7 @@ function base58Decode32(value: string): Uint8Array {
   return base58Decode(value, 32, "public key");
 }
 
-function base58Decode(value: string, expectedLength: number, field: string): Uint8Array {
+export function base58Decode(value: string, expectedLength: number, field: string): Uint8Array {
   if (!value || !BASE58_PATTERN.test(value)) {
     throw new TypeError(`${field} must use base58`);
   }
@@ -506,7 +506,7 @@ function base58Decode(value: string, expectedLength: number, field: string): Uin
   return decoded;
 }
 
-function base58Encode(value: Uint8Array): string {
+export function base58Encode(value: Uint8Array): string {
   const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
   const digits = [0];
   for (const byte of value) {
@@ -531,7 +531,7 @@ function base58Encode(value: Uint8Array): string {
   return output;
 }
 
-function decodeBase64(value: string): Uint8Array {
+export function decodeBase64(value: string): Uint8Array {
   if (!validBase64(value)) throw new StrataContractError("invalid base64 payload");
   return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 }
@@ -546,7 +546,7 @@ function hex(value: Uint8Array): string {
   return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function normalizeIdempotencyKey(value: string): string {
+export function normalizeIdempotencyKey(value: string): string {
   const key = value.trim();
   if (
     key.length === 0

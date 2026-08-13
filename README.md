@@ -1,112 +1,26 @@
-<p align="center">
-  <img src="./assets/readme-hero.svg" alt="Strata — The deepest book in DeFi." width="100%" />
-</p>
+# `@stratabook/sdk`
 
-<h1 align="center">Strata SDK for TypeScript</h1>
-
-<p align="center">
-  The official TypeScript client for live Strata markets and Sonar quotes.
-</p>
-
-<p align="center">
-  <a href="https://stratabook.org/docs/agent-sdks">Documentation</a>
-  ·
-  <a href="https://github.com/alsk1992/strata-mcp">MCP</a>
-  ·
-  <a href="https://github.com/alsk1992/strata-sdk-rs">Rust</a>
-  ·
-  <a href="https://stratabook.app">Strata</a>
-</p>
-
-Use `@stratabook/sdk` to discover what is trading, request a Sonar quote, or
-bring the same workflow into a terminal. It runs in Node.js 20+ and modern
-browsers with no runtime dependencies.
-
-## Start with a live quote
-
-```sh
-npm install @stratabook/sdk
-```
+Strict TypeScript bindings and a terminal client for Strata's versioned public
+agent contract. It works in Node 20+ and modern browsers with no runtime
+dependencies.
 
 ```ts
 import { StrataClient } from "@stratabook/sdk";
 
 const strata = new StrataClient();
-
 const quote = await strata.quote({
   market: "SOL/USDC",
   side: "sell",
   amountInAtoms: 10_000_000n,
 });
 
-console.log({
-  provider: quote.provider,
-  output: quote.amount_out_atoms,
-  minimumOutput: quote.minimum_output_atoms,
-  fee: quote.output_fee_atoms,
-  priceImpact: quote.price_impact_pct,
-  expiresAt: new Date(quote.expires_at_ms),
-});
+console.log(quote.amount_out_atoms);
 ```
 
-Sonar is Strata's unified liquidity and matching system. The SDK gives it one
-market, side, and amount; Sonar returns one decision-ready economic result for
-the whole Strata market.
-
-## Why build with it
-
-| | |
-| --- | --- |
-| **One Sonar result** | Quote the whole available Strata market through one stable interface. |
-| **Exact economics** | Amounts stay exact from request to response—no floating-point money. |
-| **Decision-ready quotes** | Output, fees, minimum output, price impact, and expiry arrive together. |
-| **Everywhere TypeScript runs** | Use the same client in Node.js, modern browsers, scripts, and agents. |
-| **Terminal included** | Move from application code to shell automation without learning another model. |
-
-## Core workflows
-
-### Discover live markets
-
-```ts
-const { markets } = await strata.markets();
-
-const ready = markets
-  .filter((market) => market.ready)
-  .map((market) => ({
-    market: market.label,
-    baseDecimals: market.base_decimals,
-    quoteDecimals: market.quote_decimals,
-  }));
-
-console.table(ready);
-```
-
-### Inspect current capabilities
-
-```ts
-const { capabilities } = await strata.capabilities();
-
-for (const capability of capabilities) {
-  if (capability.default_enabled) {
-    console.log(capability.id);
-  }
-}
-```
-
-### Take the same flow to a terminal
+Terminal usage:
 
 ```sh
 npx -y @stratabook/sdk markets
-
-npx -y @stratabook/sdk quote \
-  --market SOL/USDC \
-  --side sell \
-  --amount-atoms 10000000
-```
-
-Add `--json` when another program or agent will consume the result:
-
-```sh
 npx -y @stratabook/sdk quote \
   --market SOL/USDC \
   --side sell \
@@ -114,49 +28,101 @@ npx -y @stratabook/sdk quote \
   --json
 ```
 
-## Read a Sonar quote
+Money remains in atomic decimal strings. Quote responses are strict and
+versioned; unknown fields, mismatched markets, invalid lifetimes, and
+inconsistent economics fail closed. Input-asset and output-asset fees are
+labelled separately. Each quote covers all eligible liquidity in the selected
+Strata market while exposing no Sonar implementation details.
 
-| Field | What you can decide from it |
-| --- | --- |
-| `amount_in_consumed_atoms` | How much input the quote expects to use |
-| `amount_out_atoms` | The quoted output |
-| `minimum_output_atoms` | The lowest output allowed by the requested tolerance |
-| `input_fee_atoms` | Fee charged in the input token |
-| `output_fee_atoms` | Fee charged in the output token |
-| `reference_price` | The public reference price used for context |
-| `price_impact_pct` | Estimated price impact |
-| `expires_at_ms` | When to stop using the quote and request a fresh one |
+Quotes default to zero execution tolerance, so `minimum_output_atoms` equals
+the quoted output. Set `slippageBps` explicitly only when willing to accept a
+lower floor. Price impact remains a separate measure of current market depth.
 
-Token values are unsigned decimal strings in atomic units. Pass
-`amountInAtoms` as a `bigint` or decimal string; the SDK keeps every returned
-amount as a string so precision is never silently lost.
+For AI clients, install the separate `@stratabook/mcp` package. Keeping the
+protocol adapter separate preserves this SDK's zero-runtime-dependency browser
+surface.
 
-### Optional execution tolerance
+## Book and market stream
 
-Quotes default to `0` basis points: the minimum output equals the quoted output.
-This is separate from price impact, which describes the depth consumed by the
-quote itself.
-
-Set `slippageBps` only when you are willing to accept less output in exchange
-for greater execution tolerance:
+`StrataPlatformClient` discovers the live `books.read` capability before any
+market-data call. Market IDs are opaque; obtain them from `markets.list()`.
 
 ```ts
-const quote = await strata.quote({
-  market: "SOL/USDC",
-  side: "sell",
-  amountInAtoms: 10_000_000n,
-  slippageBps: 25,
+import { StrataPlatformClient } from "@stratabook/sdk";
+
+const strata = new StrataPlatformClient();
+const market = (await strata.markets.list()).markets[0];
+if (!market) throw new Error("no active Strata market");
+
+const [book, bestPrices, fees, status, trades] = await Promise.all([
+  strata.books.snapshot(market.market_id, { depth: 200 }),
+  strata.books.bestBidAsk(market.market_id),
+  strata.books.fees(market.market_id),
+  strata.books.status(market.market_id),
+  strata.books.trades(market.market_id, { limit: 100 }),
+]);
+
+const stream = await strata.books.subscribe(market.market_id, {
+  onBook: (next) => console.log(next.sequence, next.bids[0], next.asks[0]),
+  onTrade: (trade) => console.log(trade.side, trade.price_atoms),
+  onMarketStatus: (status) => console.log(status),
+  onError: console.error,
 });
+await stream.ready;
 ```
 
-The returned `minimum_output_atoms` is always the authoritative floor. A
-tolerance can affect which result is viable; it never changes what the field
-means.
+The stream starts with a snapshot, applies strict previous-sequence changes,
+sends heartbeats, reports status changes, reconnects with bounded backoff, and
+replaces local state after a gap. A zero size removes a price. Stale input
+removes the live local book until a fresh snapshot arrives. All prices and
+quantities remain atomic decimal strings, and exact execution fees remain bound
+to fresh quotes.
+
+## Signed account state
+
+`StrataPlatformClient.account` reads and streams the owner's sanitized orders,
+fills, and settlement updates when `account.read` is live. Supply an external
+Ed25519 message signer; the SDK accepts no private-key material.
+
+```ts
+const account = await strata.account.snapshot(ownerSigner);
+
+const accountStream = await strata.account.subscribe(ownerSigner, {
+  onAccount: (view) => console.log(view.market_id, view.orders, view.fills),
+  onFill: (marketId, fill) => console.log(marketId, fill.settlement),
+  onError: console.error,
+});
+await accountStream.ready;
+```
+
+HTTP signatures bind the wallet, market, request time, and fill limit. Streams
+authenticate an expiring server challenge before any private state is sent.
+The SDK validates sequences, reconnects with bounded backoff, replaces state
+after gaps, and stops terminal authorization failures instead of retrying
+forever. Returned IDs are opaque, and account responses stay limited to the
+owner's product-level order, fill, fee, settlement, and transaction state.
 
 ## Authenticated execution
 
-When the live prepare and submit capabilities are enabled, `executeQuote`
-executes an unexpired quote through an application-owned Vault session:
+The SDK can execute an unexpired quote through a Vault session when the live
+`trade.prepare` and `trade.submit` capabilities are enabled. It never accepts a
+seed phrase or private key. Instead, `executeQuote` takes:
+
+- the Sonar quote and Vault owner;
+- a non-exportable session adapter;
+- the Vault account sequence; and
+- a mandatory transaction verifier.
+
+The session first signs a one-time authorization bound to the quote and its
+`minimum_output_atoms`. Strata prepares the transaction, the application
+verifies it, and only then may the session add its transaction signature.
+Submission is idempotent.
+
+Agents that already have an owner-configured signer can drive each boundary
+separately with `executionChallenge`, `executionPrepare`, and
+`executionSubmit`. `actionGraph()` returns the live operation topology and
+transition conditions. These methods accept public keys, detached signatures,
+and signed transactions—not private keys.
 
 ```ts
 const receipt = await strata.executeQuote({
@@ -168,58 +134,37 @@ const receipt = await strata.executeQuote({
 });
 ```
 
-The SDK never accepts a seed phrase or private key. It asks the non-exportable
-session to sign a one-time authorization bound to the quote and
-`minimum_output_atoms`, prepares the transaction, runs your mandatory
-deny-by-default verifier, and only then asks the session to sign the
-transaction. Submission is idempotent.
+`verifyTransaction` protects transaction integrity; the external agent owner
+decides the actual permission and signing policy. Use the verifier configured by
+the signing application. MCP exposes the same challenge, prepare, and submit
+sequence when the corresponding live capabilities are available.
 
-The owner wallet remains the recovery authority for pausing or revoking the
-session and for withdrawals. Prepare and submit are disabled by default; the
-included terminal client remains read-only.
+## Resting orders
 
-## Choose your Strata interface
-
-| You are building… | Start here |
-| --- | --- |
-| A TypeScript application or browser experience | This SDK |
-| A shell script or terminal workflow | The included `strata` CLI |
-| An AI agent that should call Strata directly | [Strata MCP](https://github.com/alsk1992/strata-mcp) |
-| A native service or Rust tool | [Strata SDK for Rust](https://github.com/alsk1992/strata-sdk-rs) |
-| Better Strata judgment inside a coding agent | [Strata Agent Skills](https://github.com/alsk1992/strata-agent-skills) |
-
-## Configuration
-
-Production is the default:
+When `orders.prepare` and `orders.submit` are live, the platform client can
+place good-until-cancelled or post-only orders and cancel one or all open
+orders. The one-call helper parses every signed authorization field, requires
+the owner's transaction verifier, then delegates both signatures to the
+external session adapter.
 
 ```ts
-const strata = new StrataClient();
-```
-
-Set a timeout or a controlled development endpoint when needed:
-
-```ts
-const strata = new StrataClient({
-  apiBase: "https://api.stratabook.app",
-  timeoutMs: 10_000,
+const receipt = await strata.orders.execute(market.market_id, {
+  operation: {
+    action: "place",
+    ownerWallet,
+    accountSequence,
+    clientOrderId: "strategy-42",
+    side: "buy",
+    orderType: "post_only",
+    limitPriceAtoms: 150_000_000n,
+    sizeAtoms: 1_000_000_000n,
+  },
+  signer: vaultSession,
+  verifyTransaction: verifyForThisVault,
 });
 ```
 
-`StrataApiError` includes an HTTP status, stable error code, and retryability
-hint. `StrataContractError` means the requested operation or returned data is
-not compatible with the SDK's supported contract.
-
-## Current release
-
-The SDK contains market discovery, Sonar quotes, and the gated Vault-session
-execution contract. The included terminal client is read-only. Live capability
-discovery is authoritative.
-
-## Resources
-
-- [Agent quick start](https://stratabook.org/docs/hello-agents)
-- [SDK documentation](https://stratabook.org/docs/agent-sdks)
-- [Issues and feature requests](https://github.com/alsk1992/strata-sdk-ts/issues)
-- [Security policy](SECURITY.md)
-
-Licensed under either [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT).
+Use `orders.challenge`, `orders.prepare`, and `orders.submit` when an agent
+runtime needs to broker each boundary separately. All market and order IDs are
+opaque, cancel-all is bounded to the exact order set in its signed challenge,
+and submission is idempotent.
