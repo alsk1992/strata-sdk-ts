@@ -87,6 +87,67 @@ test("discovers live v2 reads before calling modular asset and market APIs", asy
   ]);
 });
 
+test("shares one capability request across concurrent gated connections", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  capabilities.capabilities = [
+    ...(capabilities.capabilities as Array<Record<string, unknown>>),
+    {
+      id: "orders.prepare",
+      risk: "prepare",
+      required_scope: "orders:prepare",
+      transports: ["http", "websocket", "mcp"],
+      mcp_exposure: "prepare",
+    },
+    {
+      id: "orders.submit",
+      risk: "submit",
+      required_scope: "orders:submit",
+      transports: ["http", "websocket", "mcp"],
+      mcp_exposure: "submit",
+    },
+  ];
+  let capabilityRequests = 0;
+  let releaseRequest: (() => void) | undefined;
+  const requestGate = new Promise<void>((resolve) => { releaseRequest = resolve; });
+  const sockets: FakeWebSocket[] = [];
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async () => {
+      capabilityRequests += 1;
+      await requestGate;
+      return Response.json(capabilities);
+    },
+  });
+  const signer = {
+    publicKey: "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
+    signMessage: async () => new Uint8Array(64),
+    signTransaction: async () => "AQIDBA==",
+  };
+  const pending = Array.from({ length: 50 }, () => client.orders.connect(
+    "market_33333333333333333333333333333333",
+    "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+    signer,
+    {},
+    {
+      reconnect: false,
+      webSocketFactory: (url) => {
+        const socket = new FakeWebSocket(url);
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+    },
+  ));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(capabilityRequests, 1);
+  releaseRequest!();
+  const connections = await Promise.all(pending);
+  assert.equal(sockets.length, 50);
+  const closedReadiness = connections.map((connection) =>
+    connection.ready.catch(() => undefined));
+  connections.forEach((connection) => connection.close());
+  await Promise.all(closedReadiness);
+});
+
 test("reads the complete book, status, fee schedule, and recent trades by opaque market ID", async () => {
   const capabilities = await v2Fixture("platform-capabilities");
   const fixtures = new Map([
