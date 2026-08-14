@@ -199,6 +199,7 @@ export class StrataPlatformClient {
     readonly value: PlatformDiscoveryResponse;
     readonly expiresAtMs: number;
   };
+  private capabilityRequest: Promise<PlatformDiscoveryResponse> | undefined;
 
   constructor(options: StrataPlatformClientOptions = {}) {
     const candidate = options.apiBase?.trim() || DEFAULT_API_BASE;
@@ -257,12 +258,22 @@ export class StrataPlatformClient {
     if (!force && this.capabilityCache && this.capabilityCache.expiresAtMs > now) {
       return this.capabilityCache.value;
     }
-    const value = platformDiscoveryResponse(await this.get("/v2/capabilities"));
-    this.capabilityCache = {
-      value,
-      expiresAtMs: now + this.capabilityCacheMs,
-    };
-    return value;
+    if (!force && this.capabilityRequest) return this.capabilityRequest;
+    const request = this.get("/v2/capabilities").then((response) => {
+      const value = platformDiscoveryResponse(response);
+      this.capabilityCache = {
+        value,
+        expiresAtMs: Date.now() + this.capabilityCacheMs,
+      };
+      return value;
+    });
+    if (force) return request;
+    this.capabilityRequest = request;
+    try {
+      return await request;
+    } finally {
+      if (this.capabilityRequest === request) this.capabilityRequest = undefined;
+    }
   }
 
   private async listAssets(request: PageRequest = {}): Promise<PlatformAssetsResponse> {
