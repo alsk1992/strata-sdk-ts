@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   base58Decode,
   base58Encode,
+  certifyPlatformOrderCommandSlo,
   StrataContractError,
   StrataPlatformClient,
   type PlatformAccountView,
@@ -885,4 +886,166 @@ test("rejects a changed nested replacement after batch authorization", async () 
     /order size changed/,
   );
   assert.equal(signed, false);
+});
+
+test("authenticates and correlates persistent order commands with explicit self-trade policy", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  (capabilities.capabilities as Array<Record<string, unknown>>).push(
+    {
+      id: "orders.prepare",
+      risk: "prepare",
+      required_scope: "orders:prepare",
+      transports: ["http", "websocket", "mcp"],
+      mcp_exposure: "prepare",
+    },
+    {
+      id: "orders.submit",
+      risk: "submit",
+      required_scope: "orders:submit",
+      transports: ["http", "websocket", "mcp"],
+      mcp_exposure: "submit",
+    },
+  );
+  const marketId = "market_22222222222222222222222222222222";
+  const ownerWallet = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
+  const sessionPublicKey = "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2";
+  const sockets: FakeWebSocket[] = [];
+  const signedMessages: string[] = [];
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async () => Response.json(capabilities),
+  });
+  const connection = await client.orders.connect(
+    marketId,
+    ownerWallet,
+    {
+      publicKey: sessionPublicKey,
+      signMessage: async (message) => {
+        signedMessages.push(new TextDecoder().decode(message));
+        return new Uint8Array(64).fill(5);
+      },
+      signTransaction: async () => "AQ==",
+    },
+    {},
+    {
+      reconnect: false,
+      webSocketFactory: (url) => {
+        const socket = new FakeWebSocket(url);
+        sockets.push(socket);
+        return socket as unknown as WebSocket;
+      },
+    },
+  );
+  const challengeNonce = "ab".repeat(32);
+  sockets[0]!.emit({
+    type: "auth_challenge",
+    schema_version: 2,
+    contract_version: "2.0",
+    market_id: marketId,
+    challenge: challengeNonce,
+    server_time_ms: 1786550400000,
+    expires_at_ms: 1786550405000,
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(
+    signedMessages[0],
+    `strata:order-command-stream:v2\n${marketId}\n${ownerWallet}\n${sessionPublicKey}\n${challengeNonce}`,
+  );
+  assert.deepEqual(JSON.parse(sockets[0]!.sent[0]!), {
+    type: "authenticate",
+    owner_wallet: ownerWallet,
+    session_public_key: sessionPublicKey,
+    signature: base58Encode(new Uint8Array(64).fill(5)),
+  });
+  const streamId = "order_command_stream_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  sockets[0]!.emit({
+    type: "ready",
+    schema_version: 2,
+    contract_version: "2.0",
+    market_id: marketId,
+    stream_id: streamId,
+    sequence: "1",
+    server_time_ms: 1786550400001,
+  });
+  await connection.ready;
+
+  const resultPromise = connection.challenge({
+    action: "place",
+    ownerWallet,
+    accountSequence: 8n,
+    clientOrderId: "agent-8",
+    side: "buy",
+    orderType: "post_only",
+    limitPriceAtoms: 150_000_000n,
+    sizeAtoms: 2_000_000n,
+  }, "cancel_maker");
+  const command = JSON.parse(sockets[0]!.sent[1]!) as Record<string, unknown>;
+  assert.equal(command.type, "command");
+  assert.equal(command.sequence, "1");
+  assert.equal((command.command as Record<string, unknown>).self_trade_prevention, "cancel_maker");
+  const response = await v2Fixture("order-challenge");
+  sockets[0]!.emit({
+    type: "challenge_result",
+    schema_version: 2,
+    contract_version: "2.0",
+    market_id: marketId,
+    stream_id: streamId,
+    sequence: "2",
+    previous_sequence: "1",
+    request_id: command.request_id,
+    self_trade_prevention: "cancel_maker",
+    prevented_order_ids: [],
+    effective_request: {
+      action: "place",
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+      account_sequence: "8",
+      client_order_id: "agent-8",
+      side: "buy",
+      order_type: "post_only",
+      limit_price_atoms: "150000000",
+      size_atoms: "2000000",
+    },
+    response,
+    server_time_ms: 1786550400002,
+  });
+  const result = await resultPromise;
+  assert.equal(result.selfTradePrevention, "cancel_maker");
+  assert.equal(result.response.challenge_id, "oc_11111111111111111111111111111111");
+  assert.equal(JSON.stringify(command).includes("venue"), false);
+  connection.close();
+});
+
+test("produces a machine-readable order command load certificate", async () => {
+  let closed = 0;
+  const certificate = await certifyPlatformOrderCommandSlo({
+    connections: 2,
+    samples: 40,
+    warmupSamplesPerConnection: 2,
+    maximumInflightPerConnection: 4,
+    thresholds: {
+      authenticationP99Ms: 1_000,
+      commandP50Ms: 1_000,
+      commandP95Ms: 1_000,
+      commandP99Ms: 1_000,
+      maximumErrorRate: 0,
+    },
+    connect: async () => ({
+      ready: Promise.resolve(),
+      challenge: async () => { throw new Error("unused"); },
+      execute: async () => { throw new Error("unused"); },
+      status: async () => { throw new Error("unused"); },
+      armDeadMan: async () => { throw new Error("unused"); },
+      deadManStatus: async () => { throw new Error("unused"); },
+      heartbeatDeadMan: async () => { throw new Error("unused"); },
+      disarmDeadMan: async () => { throw new Error("unused"); },
+      close: () => { closed += 1; },
+    }),
+    probe: async () => Promise.resolve(),
+  });
+  assert.equal(certificate.kind, "strata-order-command-slo");
+  assert.equal(certificate.commands.samples, 40);
+  assert.equal(certificate.errors, 0);
+  assert.equal(certificate.passed, true);
+  assert.equal(closed, 2);
 });

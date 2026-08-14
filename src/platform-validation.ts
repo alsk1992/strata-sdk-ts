@@ -22,10 +22,14 @@ import {
   type PlatformMarketsResponse,
   type PlatformOrderAction,
   type PlatformOrderChallengeResponse,
+  type PlatformOrderChallengeWire,
+  type PlatformOrderCommandEvent,
   type PlatformOrderControlStatus,
+  type PlatformDeadManState,
   type PlatformOrderPrepareResponse,
   type PlatformOrderStatusResponse,
   type PlatformOrderSubmitResponse,
+  type PlatformSelfTradePrevention,
   type PlatformTrade,
   type PlatformTradesResponse,
 } from "./platform.js";
@@ -58,6 +62,20 @@ const ORDER_TYPES = [
 const FILL_SETTLEMENT_STATES = ["pending", "confirmed", "failed"] as const;
 const ORDER_ACTIONS = ["place", "cancel", "cancel_all", "replace", "batch"] as const;
 const ORDER_CONTROL_STATUSES = ["submitting", "submitted", "failed"] as const;
+const SELF_TRADE_PREVENTION = [
+  "cancel_taker", "cancel_maker", "cancel_both", "skip_own_liquidity",
+] as const;
+const DEAD_MAN_STATUSES = [
+  "armed", "triggering", "triggered", "disarmed", "expired", "failed",
+] as const;
+const PUBLIC_ERROR_CODES = [
+  "invalid_request", "unsupported_capability", "market_unavailable", "market_warming",
+  "quote_unavailable", "quote_expired", "price_bound_failed", "insufficient_balance",
+  "policy_rejected", "session_expired", "sequence_conflict", "duplicate_client_id",
+  "order_rejected", "order_not_found", "cancel_too_late", "self_trade_prevented",
+  "dead_man_expired", "rate_limited", "temporarily_unavailable", "submission_ambiguous",
+  "settlement_pending", "settlement_failed",
+] as const;
 
 function object(value: unknown, field: string): JsonObject {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -946,4 +964,263 @@ export function platformOrderStatusResponse(value: unknown): PlatformOrderStatus
     failure_code: failureCode,
     updated_at_ms: integer(response.updated_at_ms, "updated_at_ms"),
   };
+}
+
+function orderChallengeWire(value: unknown): PlatformOrderChallengeWire {
+  const request = object(value, "effective order challenge");
+  const action = orderAction(request.action, "effective order challenge.action");
+  const common = {
+    action,
+    owner_wallet: walletAddress(request.owner_wallet, "owner_wallet"),
+    session_public_key: walletAddress(request.session_public_key, "session_public_key"),
+  };
+  if (common.owner_wallet === common.session_public_key) {
+    throw new Error("effective order challenge reuses the owner as session key");
+  }
+  const place = (item: JsonObject, field: string) => {
+    if (item.side !== "buy" && item.side !== "sell") throw new Error(`${field}.side is invalid`);
+    if (item.order_type !== "good_until_cancelled" && item.order_type !== "post_only") {
+      throw new Error(`${field}.order_type is invalid`);
+    }
+    return {
+      account_sequence: atomicString(item.account_sequence, `${field}.account_sequence`),
+      client_order_id: string(item.client_order_id, `${field}.client_order_id`),
+      side: item.side,
+      order_type: item.order_type,
+      limit_price_atoms: atomicString(item.limit_price_atoms, `${field}.limit_price_atoms`, false),
+      size_atoms: atomicString(item.size_atoms, `${field}.size_atoms`, false),
+    } as const;
+  };
+  if (action === "place") {
+    exactKeys(request, [
+      "action", "owner_wallet", "session_public_key", "account_sequence", "client_order_id",
+      "side", "order_type", "limit_price_atoms", "size_atoms",
+    ], "effective order challenge");
+    return { ...common, action, ...place(request, "effective order challenge") };
+  }
+  if (action === "cancel") {
+    exactKeys(request, ["action", "owner_wallet", "session_public_key", "order_id"],
+      "effective order challenge");
+    return { ...common, action, order_id: opaqueOrderId(request.order_id, "order_id") };
+  }
+  if (action === "cancel_all") {
+    exactKeys(request, ["action", "owner_wallet", "session_public_key"],
+      "effective order challenge");
+    return { ...common, action };
+  }
+  if (action === "replace") {
+    exactKeys(request, [
+      "action", "owner_wallet", "session_public_key", "order_id", "account_sequence",
+      "client_order_id", "side", "order_type", "limit_price_atoms", "size_atoms",
+    ], "effective order challenge");
+    return {
+      ...common,
+      action,
+      order_id: opaqueOrderId(request.order_id, "order_id"),
+      ...place(request, "effective order challenge"),
+    };
+  }
+  exactKeys(request, ["action", "owner_wallet", "session_public_key", "operations"],
+    "effective order challenge");
+  if (!Array.isArray(request.operations)
+      || request.operations.length < 1 || request.operations.length > 6) {
+    throw new Error("effective order batch must contain between one and six operations");
+  }
+  const operations = request.operations.map((raw, index) => {
+    const item = object(raw, `operations[${index}]`);
+    if (item.action === "cancel") {
+      exactKeys(item, ["action", "order_id"], `operations[${index}]`);
+      return {
+        action: "cancel" as const,
+        order_id: opaqueOrderId(item.order_id, `operations[${index}].order_id`),
+      };
+    }
+    if (item.action === "place") {
+      exactKeys(item, [
+        "action", "account_sequence", "client_order_id", "side", "order_type",
+        "limit_price_atoms", "size_atoms",
+      ], `operations[${index}]`);
+      return { action: "place" as const, ...place(item, `operations[${index}]`) };
+    }
+    if (item.action === "replace") {
+      exactKeys(item, [
+        "action", "order_id", "account_sequence", "client_order_id", "side", "order_type",
+        "limit_price_atoms", "size_atoms",
+      ], `operations[${index}]`);
+      return {
+        action: "replace" as const,
+        order_id: opaqueOrderId(item.order_id, `operations[${index}].order_id`),
+        ...place(item, `operations[${index}]`),
+      };
+    }
+    throw new Error(`operations[${index}].action is invalid`);
+  });
+  return { ...common, action: "batch", operations };
+}
+
+function deadManState(value: unknown): PlatformDeadManState {
+  const state = object(value, "dead-man state");
+  exactKeys(state, [
+    "status", "timeout_ms", "heartbeat_deadline_ms", "order_control_id",
+    "signature", "failure_code", "updated_at_ms",
+  ], "dead-man state");
+  if (!DEAD_MAN_STATUSES.includes(state.status as typeof DEAD_MAN_STATUSES[number])) {
+    throw new Error("dead-man status is invalid");
+  }
+  const optional = (value: unknown, field: string): string | null =>
+    value === null ? null : string(value, field);
+  const controlId = optional(state.order_control_id, "order_control_id");
+  if (controlId !== null) opaqueHandle(controlId, "order_control_id", "or_");
+  const signature = optional(state.signature, "signature");
+  if (signature !== null && !/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) {
+    throw new Error("dead-man signature is invalid");
+  }
+  const failureCode = optional(state.failure_code, "failure_code");
+  if (failureCode !== null && !/^[a-z][a-z0-9_]{2,63}$/.test(failureCode)) {
+    throw new Error("dead-man failure code is invalid");
+  }
+  return {
+    status: state.status as PlatformDeadManState["status"],
+    timeout_ms: integer(state.timeout_ms, "timeout_ms", 30_000),
+    heartbeat_deadline_ms: integer(state.heartbeat_deadline_ms, "heartbeat_deadline_ms"),
+    order_control_id: controlId,
+    signature,
+    failure_code: failureCode,
+    updated_at_ms: integer(state.updated_at_ms, "updated_at_ms"),
+  };
+}
+
+function commandStreamId(value: unknown): string {
+  const id = string(value, "stream_id");
+  if (!/^order_command_stream_[0-9a-f]{32}$/.test(id)) {
+    throw new Error("order command stream ID is invalid");
+  }
+  return id;
+}
+
+export function platformOrderCommandEvent(value: unknown): PlatformOrderCommandEvent {
+  const event = object(value, "order command event");
+  const type = string(event.type, "order command event.type");
+  const base = () => {
+    version(event);
+    return {
+      schema_version: PLATFORM_SCHEMA_VERSION,
+      contract_version: PLATFORM_CONTRACT_VERSION,
+      market_id: marketId(event.market_id),
+      server_time_ms: integer(event.server_time_ms, "server_time_ms"),
+    } as const;
+  };
+  if (type === "auth_challenge") {
+    exactKeys(event, [
+      "type", "schema_version", "contract_version", "market_id", "challenge",
+      "server_time_ms", "expires_at_ms",
+    ], "order command auth challenge");
+    const common = base();
+    const challenge = string(event.challenge, "challenge");
+    if (!/^[0-9a-f]{64}$/.test(challenge)) throw new Error("order command challenge is invalid");
+    const expiresAt = integer(event.expires_at_ms, "expires_at_ms");
+    if (expiresAt <= common.server_time_ms) throw new Error("order command challenge is expired");
+    return { type, ...common, challenge, expires_at_ms: expiresAt };
+  }
+  const ready = type === "ready";
+  const resultKeys = ready
+    ? ["type", "schema_version", "contract_version", "market_id", "stream_id", "sequence",
+      "server_time_ms"]
+    : undefined;
+  if (ready) {
+    exactKeys(event, resultKeys!, "order command ready");
+    return {
+      type,
+      ...base(),
+      stream_id: commandStreamId(event.stream_id),
+      sequence: atomicString(event.sequence, "sequence", false),
+    };
+  }
+  const commonKeys = [
+    "type", "schema_version", "contract_version", "market_id", "stream_id", "sequence",
+    "previous_sequence", "server_time_ms",
+  ];
+  const common = () => ({
+    ...base(),
+    stream_id: commandStreamId(event.stream_id),
+    sequence: atomicString(event.sequence, "sequence", false),
+    previous_sequence: atomicString(event.previous_sequence, "previous_sequence"),
+  });
+  if (type === "heartbeat") {
+    exactKeys(event, commonKeys, "order command heartbeat");
+    return { type, ...common() };
+  }
+  const requestId = string(event.request_id, "request_id");
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(requestId)) throw new Error("request_id is invalid");
+  if (type === "challenge_result") {
+    exactKeys(event, [...commonKeys, "request_id", "self_trade_prevention",
+      "prevented_order_ids", "effective_request", "response"], "order challenge result");
+    if (!SELF_TRADE_PREVENTION.includes(
+      event.self_trade_prevention as typeof SELF_TRADE_PREVENTION[number],
+    )) throw new Error("self-trade prevention mode is invalid");
+    if (!Array.isArray(event.prevented_order_ids) || event.prevented_order_ids.length > 12) {
+      throw new Error("prevented_order_ids is invalid");
+    }
+    const preventedOrderIds = event.prevented_order_ids.map((item, index) =>
+      opaqueOrderId(item, `prevented_order_ids[${index}]`));
+    unique(preventedOrderIds, "prevented_order_ids");
+    return {
+      type,
+      ...common(),
+      request_id: requestId,
+      self_trade_prevention: event.self_trade_prevention as PlatformSelfTradePrevention,
+      prevented_order_ids: preventedOrderIds,
+      effective_request: orderChallengeWire(event.effective_request),
+      response: platformOrderChallengeResponse(event.response),
+    };
+  }
+  if (type === "prepare_result") {
+    exactKeys(event, [...commonKeys, "request_id", "response"], "order prepare result");
+    return { type, ...common(), request_id: requestId,
+      response: platformOrderPrepareResponse(event.response) };
+  }
+  if (type === "submit_result") {
+    exactKeys(event, [...commonKeys, "request_id", "response"], "order submit result");
+    return { type, ...common(), request_id: requestId,
+      response: platformOrderSubmitResponse(event.response) };
+  }
+  if (type === "status_result") {
+    exactKeys(event, [...commonKeys, "request_id", "response"], "order status result");
+    return { type, ...common(), request_id: requestId,
+      response: platformOrderStatusResponse(event.response) };
+  }
+  if (type === "dead_man_result") {
+    exactKeys(event, [...commonKeys, "request_id", "state"], "dead-man result");
+    return { type, ...common(), request_id: requestId, state: deadManState(event.state) };
+  }
+  if (type === "command_error") {
+    exactKeys(event, [...commonKeys, "request_id", "error"], "order command error");
+    const error = object(event.error, "order command error.error");
+    const keys = ["code", "message", "retryable"];
+    if (error.retry_after_ms !== undefined) keys.push("retry_after_ms");
+    if (error.operation_id !== undefined) keys.push("operation_id");
+    exactKeys(error, keys, "order command error.error");
+    const code = string(error.code, "error.code");
+    if (!PUBLIC_ERROR_CODES.includes(code as typeof PUBLIC_ERROR_CODES[number])
+        || typeof error.retryable !== "boolean") {
+      throw new Error("order command error is invalid");
+    }
+    return {
+      type,
+      ...common(),
+      request_id: requestId,
+      error: {
+        code: code as typeof PUBLIC_ERROR_CODES[number],
+        message: string(error.message, "error.message"),
+        retryable: error.retryable,
+        ...(error.retry_after_ms === undefined ? {} : {
+          retry_after_ms: integer(error.retry_after_ms, "error.retry_after_ms"),
+        }),
+        ...(error.operation_id === undefined ? {} : {
+          operation_id: string(error.operation_id, "error.operation_id"),
+        }),
+      },
+    };
+  }
+  throw new Error("order command event type is invalid");
 }

@@ -36,6 +36,12 @@ import {
   type PlatformMarketDataSubscription,
   type PlatformMarketDataSubscriptionOptions,
 } from "./platform-stream.js";
+import {
+  connectPlatformOrderCommands,
+  type PlatformOrderCommandConnection,
+  type PlatformOrderCommandHandlers,
+  type PlatformOrderCommandOptions,
+} from "./platform-order-stream.js";
 import type {
   PageRequest,
   PlatformAccountSigner,
@@ -60,7 +66,7 @@ import type {
   PlatformOrderSubmitResponse,
   PlatformTradesResponse,
 } from "./platform.js";
-import { DEFAULT_API_BASE } from "./types.js";
+import { DEFAULT_API_BASE, type StrataSessionSigner } from "./types.js";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_CAPABILITY_CACHE_MS = 5_000;
@@ -165,6 +171,14 @@ export interface PlatformOrdersModule {
     marketId: string,
     request: PlatformOrderExecuteInput,
   ): Promise<PlatformOrderSubmitResponse>;
+  /** Open the authenticated low-latency order command channel for one market. */
+  connect(
+    marketId: string,
+    ownerWallet: string,
+    signer: StrataSessionSigner,
+    handlers?: PlatformOrderCommandHandlers,
+    options?: PlatformOrderCommandOptions,
+  ): Promise<PlatformOrderCommandConnection>;
 }
 
 /**
@@ -233,6 +247,8 @@ export class StrataPlatformClient {
       submit: (marketId, request) => this.orderSubmit(marketId, request),
       status: (marketId, request) => this.orderStatus(marketId, request),
       execute: (marketId, request) => this.executeOrder(marketId, request),
+      connect: (marketId, ownerWallet, signer, handlers, streamOptions) =>
+        this.connectOrders(marketId, ownerWallet, signer, handlers, streamOptions),
     };
   }
 
@@ -607,6 +623,27 @@ export class StrataPlatformClient {
     });
   }
 
+  private async connectOrders(
+    marketId: string,
+    ownerWallet: string,
+    signer: StrataSessionSigner,
+    handlers: PlatformOrderCommandHandlers = {},
+    options: PlatformOrderCommandOptions = {},
+  ): Promise<PlatformOrderCommandConnection> {
+    await Promise.all([
+      this.requireCapability("orders.prepare", "prepare", "websocket"),
+      this.requireCapability("orders.submit", "submit", "websocket"),
+    ]);
+    return connectPlatformOrderCommands(
+      this.apiBase,
+      checkedMarketId(marketId),
+      ownerWallet,
+      signer,
+      handlers,
+      options,
+    );
+  }
+
   private async accountMarketIds(requested?: readonly string[]): Promise<readonly string[]> {
     if (requested !== undefined) {
       if (requested.length === 0) throw new TypeError("marketIds must not be empty");
@@ -643,10 +680,11 @@ export class StrataPlatformClient {
   private async requireCapability(
     capabilityId: string,
     risk: "prepare" | "submit",
+    transport: "http" | "websocket" = "http",
   ): Promise<PlatformDiscoveryResponse> {
     const discovery = await this.readDiscovery(false);
     const capability = discovery.capabilities.find((item) => item.id === capabilityId);
-    if (!capability || capability.risk !== risk || !capability.transports.includes("http")) {
+    if (!capability || capability.risk !== risk || !capability.transports.includes(transport)) {
       throw new StrataContractError(`live capability is not available: ${capabilityId}`);
     }
     return discovery;
@@ -893,7 +931,7 @@ function parsePublicError(value: unknown): {
   };
 }
 
-async function validateOrderAuthorization(
+export async function validateOrderAuthorization(
   challenge: PlatformOrderChallengeResponse,
   operation: PlatformOrderExecuteOperation,
   sessionPublicKey: string,

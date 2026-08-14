@@ -323,6 +323,48 @@
       "available": true
     },
     {
+      "id": "open_order_command_stream",
+      "kind": "prepare",
+      "summary": "Authenticate one persistent sequenced order channel for low-latency commands, explicit self-trade policy, and pushed confirmation.",
+      "required_capabilities": [
+        "orders.prepare",
+        "orders.submit"
+      ],
+      "available": false,
+      "operation": {
+        "method": "WEBSOCKET",
+        "path": "/v2/markets/{market_id}/orders/stream"
+      }
+    },
+    {
+      "id": "maintain_dead_man",
+      "kind": "submit",
+      "summary": "Arm and heartbeat an exact pre-signed cancel-all that executes if the agent stops responding.",
+      "required_capabilities": [
+        "orders.prepare",
+        "orders.submit"
+      ],
+      "available": false,
+      "operation": {
+        "method": "WEBSOCKET",
+        "path": "/v2/markets/{market_id}/orders/stream"
+      }
+    },
+    {
+      "id": "certify_order_command_slo",
+      "kind": "read",
+      "summary": "Measure authenticated command latency, concurrency, sequence integrity, and error rate without submitting a trade.",
+      "required_capabilities": [
+        "orders.prepare",
+        "orders.submit"
+      ],
+      "available": false,
+      "operation": {
+        "method": "WEBSOCKET",
+        "path": "/v2/markets/{market_id}/orders/stream"
+      }
+    },
+    {
       "id": "recover_order_status",
       "kind": "read",
       "summary": "Recover durable submitting, submitted, or failed status after a timeout or restart.",
@@ -440,6 +482,26 @@
     },
     {
       "from": "discover_platform_markets",
+      "to": "open_order_command_stream",
+      "condition": "orders.prepare and orders.submit advertise websocket transport and the owner-configured session signer is available"
+    },
+    {
+      "from": "open_order_command_stream",
+      "to": "request_order_challenge",
+      "condition": "signed socket authentication succeeds and an explicit self-trade prevention policy is selected"
+    },
+    {
+      "from": "open_order_command_stream",
+      "to": "maintain_dead_man",
+      "condition": "the exact cancel-all authorization and transaction are externally verified and signed"
+    },
+    {
+      "from": "open_order_command_stream",
+      "to": "certify_order_command_slo",
+      "condition": "a release or recurring production load certificate is required"
+    },
+    {
+      "from": "discover_platform_markets",
       "to": "request_order_challenge",
       "condition": "orders.prepare is enabled and the market accepts order control"
     },
@@ -472,6 +534,11 @@
       "from": "submit_order_control",
       "to": "recover_order_status",
       "condition": "the submission result is ambiguous or either process restarted"
+    },
+    {
+      "from": "submit_order_control",
+      "to": "maintain_dead_man",
+      "condition": "the agent has resting exposure that must fail closed on disconnect"
     },
     {
       "from": "recover_order_status",
