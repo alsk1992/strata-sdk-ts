@@ -56,6 +56,8 @@ export type PlatformPublicErrorCode =
   | "order_rejected"
   | "order_not_found"
   | "cancel_too_late"
+  | "self_trade_prevented"
+  | "dead_man_expired"
   | "rate_limited"
   | "temporarily_unavailable"
   | "submission_ambiguous"
@@ -440,6 +442,138 @@ export interface PlatformOrderStatusResponse {
   readonly failure_code: string | null;
   readonly updated_at_ms: number;
 }
+
+export type PlatformSelfTradePrevention =
+  | "cancel_taker"
+  | "cancel_maker"
+  | "cancel_both"
+  | "skip_own_liquidity";
+
+export type PlatformOrderBatchOperationWire =
+  | {
+      readonly action: "place";
+      readonly account_sequence: AtomicString;
+      readonly client_order_id: string;
+      readonly side: PlatformTradeSide;
+      readonly order_type: PlatformRestingOrderType;
+      readonly limit_price_atoms: AtomicString;
+      readonly size_atoms: AtomicString;
+    }
+  | { readonly action: "cancel"; readonly order_id: PlatformEntityId }
+  | {
+      readonly action: "replace";
+      readonly order_id: PlatformEntityId;
+      readonly account_sequence: AtomicString;
+      readonly client_order_id: string;
+      readonly side: PlatformTradeSide;
+      readonly order_type: PlatformRestingOrderType;
+      readonly limit_price_atoms: AtomicString;
+      readonly size_atoms: AtomicString;
+    };
+
+export type PlatformOrderChallengeWire =
+  | ({
+      readonly action: "place";
+      readonly account_sequence: AtomicString;
+      readonly client_order_id: string;
+      readonly side: PlatformTradeSide;
+      readonly order_type: PlatformRestingOrderType;
+      readonly limit_price_atoms: AtomicString;
+      readonly size_atoms: AtomicString;
+    } & PlatformOrderWireIdentity)
+  | ({ readonly action: "cancel"; readonly order_id: PlatformEntityId } &
+      PlatformOrderWireIdentity)
+  | ({ readonly action: "cancel_all" } & PlatformOrderWireIdentity)
+  | ({
+      readonly action: "replace";
+      readonly order_id: PlatformEntityId;
+      readonly account_sequence: AtomicString;
+      readonly client_order_id: string;
+      readonly side: PlatformTradeSide;
+      readonly order_type: PlatformRestingOrderType;
+      readonly limit_price_atoms: AtomicString;
+      readonly size_atoms: AtomicString;
+    } & PlatformOrderWireIdentity)
+  | ({ readonly action: "batch"; readonly operations: readonly PlatformOrderBatchOperationWire[] } &
+      PlatformOrderWireIdentity);
+
+interface PlatformOrderWireIdentity {
+  readonly owner_wallet: string;
+  readonly session_public_key: string;
+}
+
+export type PlatformDeadManStatus =
+  | "armed"
+  | "triggering"
+  | "triggered"
+  | "disarmed"
+  | "expired"
+  | "failed";
+
+export interface PlatformDeadManState {
+  readonly status: PlatformDeadManStatus;
+  readonly timeout_ms: number;
+  readonly heartbeat_deadline_ms: number;
+  readonly order_control_id: string | null;
+  readonly signature: string | null;
+  readonly failure_code: string | null;
+  readonly updated_at_ms: number;
+}
+
+interface PlatformOrderCommandEnvelope {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly market_id: PlatformEntityId;
+  readonly server_time_ms: number;
+}
+
+interface PlatformOrderCommandSequence extends PlatformOrderCommandEnvelope {
+  readonly stream_id: string;
+  readonly sequence: AtomicString;
+  readonly previous_sequence: AtomicString;
+}
+
+export type PlatformOrderCommandEvent =
+  | (PlatformOrderCommandEnvelope & {
+      readonly type: "auth_challenge";
+      readonly challenge: string;
+      readonly expires_at_ms: number;
+    })
+  | (Omit<PlatformOrderCommandSequence, "previous_sequence"> & { readonly type: "ready" })
+  | (PlatformOrderCommandSequence & {
+      readonly type: "challenge_result";
+      readonly request_id: string;
+      readonly self_trade_prevention: PlatformSelfTradePrevention;
+      readonly prevented_order_ids: readonly PlatformEntityId[];
+      readonly effective_request: PlatformOrderChallengeWire;
+      readonly response: PlatformOrderChallengeResponse;
+    })
+  | (PlatformOrderCommandSequence & {
+      readonly type: "prepare_result";
+      readonly request_id: string;
+      readonly response: PlatformOrderPrepareResponse;
+    })
+  | (PlatformOrderCommandSequence & {
+      readonly type: "submit_result";
+      readonly request_id: string;
+      readonly response: PlatformOrderSubmitResponse;
+    })
+  | (PlatformOrderCommandSequence & {
+      readonly type: "status_result";
+      readonly request_id: string;
+      readonly response: PlatformOrderStatusResponse;
+    })
+  | (PlatformOrderCommandSequence & {
+      readonly type: "dead_man_result";
+      readonly request_id: string;
+      readonly state: PlatformDeadManState;
+    })
+  | (PlatformOrderCommandSequence & {
+      readonly type: "command_error";
+      readonly request_id: string;
+      readonly error: PublicOperationError;
+    })
+  | (PlatformOrderCommandSequence & { readonly type: "heartbeat" });
 
 export interface PlatformOrderVerificationContext {
   readonly challenge: PlatformOrderChallengeResponse;

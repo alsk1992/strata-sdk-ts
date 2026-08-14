@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 
-import { StrataClient } from "./client.js";
+import { generateKeyPairSync, sign as ed25519Sign } from "node:crypto";
+
+import { base58Encode, StrataClient } from "./client.js";
+import { StrataPlatformClient } from "./platform-client.js";
+import {
+  certifyPlatformOrderCommandSlo,
+  PRODUCTION_ORDER_COMMAND_SLO,
+} from "./platform-order-slo.js";
 import { DEFAULT_API_BASE, DEFAULT_SLIPPAGE_BPS, type QuoteSide } from "./types.js";
 
 interface ParsedArgs {
@@ -47,6 +54,7 @@ Usage:
   strata execution-challenge --market SOL/USDC --quote-id ID --owner-wallet PUBKEY --session-public-key PUBKEY --account-sequence N [--json]
   strata execution-prepare --market SOL/USDC --challenge-id ID --authorization-signature BASE58 [--json]
   strata execution-submit --market SOL/USDC --execution-id ID --signed-transaction-base64 BASE64 --idempotency-key KEY [--json]
+  strata order-slo --market-id ID --owner-wallet PUBKEY [--connections N] [--samples N] [--inflight N] [--warmup N] [--json]
 
 Global:
   --api-base URL       Public Strata API (default: ${DEFAULT_API_BASE})
@@ -70,6 +78,47 @@ async function run(): Promise<void> {
     timeoutMs,
   });
   const json = parsed.flags.has("json");
+
+  if (parsed.command === "order-slo") {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const spki = publicKey.export({ type: "spki", format: "der" });
+    const rawPublicKey = new Uint8Array(spki.subarray(spki.length - 32));
+    const signer = {
+      publicKey: base58Encode(rawPublicKey),
+      signMessage: async (message: Uint8Array) =>
+        new Uint8Array(ed25519Sign(null, Buffer.from(message), privateKey)),
+      signTransaction: async (): Promise<string> => {
+        throw new Error("the non-trading SLO probe never signs a transaction");
+      },
+    };
+    const platform = new StrataPlatformClient({
+      apiBase: value(parsed.flags, "api-base", DEFAULT_API_BASE),
+      timeoutMs,
+    });
+    const marketId = value(parsed.flags, "market-id");
+    const ownerWallet = value(parsed.flags, "owner-wallet");
+    const certificate = await certifyPlatformOrderCommandSlo({
+      connections: Number(value(parsed.flags, "connections", "50")),
+      samples: Number(value(parsed.flags, "samples", "10000")),
+      warmupSamplesPerConnection: Number(value(parsed.flags, "warmup", "10")),
+      maximumInflightPerConnection: Number(value(parsed.flags, "inflight", "16")),
+      thresholds: PRODUCTION_ORDER_COMMAND_SLO,
+      connect: (index) => platform.orders.connect(
+        marketId,
+        ownerWallet,
+        signer,
+        {
+          onError: (error) => {
+            if (!json) console.error(`connection ${index}: ${error.message}`);
+          },
+        },
+        { reconnect: false, requestTimeoutMs: timeoutMs },
+      ),
+    });
+    console.log(JSON.stringify(certificate, null, 2));
+    if (!certificate.passed) process.exitCode = 2;
+    return;
+  }
 
   if (parsed.command === "capabilities") {
     const catalog = await client.capabilities();
