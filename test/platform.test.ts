@@ -1017,6 +1017,7 @@ test("authenticates and correlates persistent order commands with explicit self-
     owner_wallet: ownerWallet,
     session_public_key: sessionPublicKey,
     signature: base58Encode(new Uint8Array(64).fill(5)),
+    batch_format: "compact_v1",
   });
   const streamId = "order_command_stream_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   sockets[0]!.emit([{
@@ -1040,6 +1041,7 @@ test("authenticates and correlates persistent order commands with explicit self-
     limitPriceAtoms: 150_000_000n,
     sizeAtoms: 2_000_000n,
   }, "cancel_maker");
+  await new Promise<void>((resolve) => setImmediate(resolve));
   const command = JSON.parse(sockets[0]!.sent[1]!) as Record<string, unknown>;
   assert.equal(command.type, "command");
   assert.equal(command.sequence, "1");
@@ -1077,49 +1079,69 @@ test("authenticates and correlates persistent order commands with explicit self-
 
   const statusOne = connection.status(`or_${"0".repeat(32)}`, "batch-one");
   const statusTwo = connection.status(`or_${"0".repeat(32)}`, "batch-two");
-  const statusCommandOne = JSON.parse(sockets[0]!.sent[2]!) as Record<string, unknown>;
-  const statusCommandTwo = JSON.parse(sockets[0]!.sent[3]!) as Record<string, unknown>;
-  sockets[0]!.emit([
-    {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const statusCommands = JSON.parse(sockets[0]!.sent[2]!) as Record<string, unknown>[];
+  assert.equal(statusCommands.length, 2);
+  const [statusCommandOne, statusCommandTwo] = statusCommands;
+  assert.equal(sockets[0]!.sent.length, 3);
+  sockets[0]!.emit({
+    type: "event_batch",
+    schema_version: 2,
+    contract_version: "2.0",
+    market_id: marketId,
+    stream_id: streamId,
+    first_sequence: "3",
+    previous_sequence: "2",
+    server_time_ms: 1786550400003,
+    events: [{
       type: "command_error",
-      schema_version: 2,
-      contract_version: "2.0",
-      market_id: marketId,
-      stream_id: streamId,
-      sequence: "3",
-      previous_sequence: "2",
-      request_id: statusCommandOne.request_id,
+      request_id: statusCommandOne!.request_id,
       error: {
         code: "session_expired",
         message: "The order authorization is invalid or expired.",
         retryable: false,
       },
-      server_time_ms: 1786550400003,
     },
     {
       type: "command_error",
-      schema_version: 2,
-      contract_version: "2.0",
-      market_id: marketId,
-      stream_id: streamId,
-      sequence: "4",
-      previous_sequence: "3",
-      request_id: statusCommandTwo.request_id,
+      request_id: statusCommandTwo!.request_id,
       error: {
         code: "session_expired",
         message: "The order authorization is invalid or expired.",
         retryable: false,
       },
-      server_time_ms: 1786550400004,
-    },
-  ]);
+    }],
+  });
   await assert.rejects(statusOne, /invalid or expired/);
   await assert.rejects(statusTwo, /invalid or expired/);
+
+  const probe = connection.probe("health-1");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const probeCommand = JSON.parse(sockets[0]!.sent[3]!) as Record<string, unknown>;
+  assert.equal(probeCommand.type, "command");
+  assert.equal(probeCommand.sequence, "4");
+  assert.deepEqual(probeCommand.command, { type: "probe", nonce: "health-1" });
+  sockets[0]!.emit({
+    type: "event_batch",
+    schema_version: 2,
+    contract_version: "2.0",
+    market_id: marketId,
+    stream_id: streamId,
+    first_sequence: "5",
+    previous_sequence: "4",
+    server_time_ms: 1786550400004,
+    events: [{
+      type: "probe_result",
+      request_id: probeCommand.request_id,
+      nonce: "health-1",
+    }],
+  });
+  await probe;
   assert.equal(sockets[0]!.closed, false);
   connection.close();
 });
 
-test("produces a machine-readable order command load certificate", async () => {
+test("produces a machine-readable order command latency and load certificate", async () => {
   let closed = 0;
   const certificate = await certifyPlatformOrderCommandSlo({
     connections: 2,
@@ -1131,10 +1153,12 @@ test("produces a machine-readable order command load certificate", async () => {
       commandP50Ms: 1_000,
       commandP95Ms: 1_000,
       commandP99Ms: 1_000,
+      minimumThroughputCommandsPerSecond: 0,
       maximumErrorRate: 0,
     },
     connect: async () => ({
       ready: Promise.resolve(),
+      probe: async () => {},
       challenge: async () => { throw new Error("unused"); },
       execute: async () => { throw new Error("unused"); },
       status: async () => { throw new Error("unused"); },
@@ -1148,6 +1172,8 @@ test("produces a machine-readable order command load certificate", async () => {
   });
   assert.equal(certificate.kind, "strata-order-command-slo");
   assert.equal(certificate.commands.samples, 40);
+  assert.equal(certificate.load_commands.samples, 40);
+  assert.equal(certificate.configuration.samples_per_phase, 40);
   assert.equal(certificate.errors, 0);
   assert.equal(certificate.passed, true);
   assert.equal(closed, 2);

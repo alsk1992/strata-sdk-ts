@@ -7,7 +7,7 @@ import {
   StrataContractError,
 } from "./client.js";
 import { validateOrderAuthorization } from "./platform-client.js";
-import { platformOrderCommandEvent } from "./platform-validation.js";
+import { platformOrderCommandEvents } from "./platform-validation.js";
 import type {
   PlatformDeadManState,
   PlatformOrderChallengeInput,
@@ -27,6 +27,7 @@ const MIN_RECONNECT_MS = 100;
 const MAX_RECONNECT_MS = 2_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const HEARTBEAT_TIMEOUT_MS = 30_000;
+const MAX_CLIENT_COMMANDS_PER_FRAME = 64;
 const MAX_SERVER_EVENTS_PER_FRAME = 64;
 
 export interface PlatformOrderCommandHandlers {
@@ -69,6 +70,8 @@ export interface PlatformDeadManArmInput {
 export interface PlatformOrderCommandConnection {
   /** Resolves after signed socket authentication, not merely TCP connection. */
   readonly ready: Promise<void>;
+  /** Authenticated non-trading round trip for health and latency measurement. */
+  probe(nonce: string): Promise<void>;
   challenge(
     operation: PlatformOrderExecuteOperation,
     selfTradePrevention?: PlatformSelfTradePrevention,
@@ -88,6 +91,11 @@ interface PendingCommand {
   readonly resolve: (event: PlatformOrderCommandEvent) => void;
   readonly reject: (error: Error) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+interface QueuedClientCommand {
+  readonly requestId: string;
+  readonly frame: Record<string, unknown>;
 }
 
 /**
@@ -135,6 +143,8 @@ export function connectPlatformOrderCommands(
   let resolveReady: () => void;
   let rejectReady: (error: Error) => void;
   const pending = new Map<string, PendingCommand>();
+  const queuedCommands: QueuedClientCommand[] = [];
+  let commandFlushScheduled = false;
   const ready = new Promise<void>((resolve, reject) => {
     resolveReady = resolve;
     rejectReady = reject;
@@ -156,6 +166,8 @@ export function connectPlatformOrderCommands(
       item.reject(error);
     }
     pending.clear();
+    queuedCommands.length = 0;
+    commandFlushScheduled = false;
   };
 
   const failContract = (message: string) => {
@@ -164,6 +176,46 @@ export function connectPlatformOrderCommands(
     report(error);
     rejectPending(message);
     socket?.close(4001, "sequence recovery");
+  };
+
+  const flushQueuedCommands = () => {
+    commandFlushScheduled = false;
+    if (queuedCommands.length === 0) return;
+    const active = socket;
+    if (closed || !authenticated || !active) {
+      rejectPending("Order command connection closed before queued commands were sent.");
+      return;
+    }
+    while (queuedCommands.length > 0) {
+      const batch = queuedCommands.splice(0, MAX_CLIENT_COMMANDS_PER_FRAME);
+      const wire = batch.length === 1 ? batch[0]!.frame : batch.map((item) => item.frame);
+      try {
+        active.send(JSON.stringify(wire));
+      } catch (error) {
+        report(error);
+        for (const item of batch) {
+          const waiting = pending.get(item.requestId);
+          if (!waiting) continue;
+          clearTimeout(waiting.timeout);
+          pending.delete(item.requestId);
+          waiting.reject(error instanceof Error ? error : new Error("Order command send failed"));
+        }
+        rejectPending("Order command connection failed while sending a command batch.");
+        active.close(4000, "command send failed");
+        return;
+      }
+    }
+  };
+
+  const queueCommand = (requestId: string, frame: Record<string, unknown>) => {
+    queuedCommands.push({ requestId, frame });
+    if (queuedCommands.length >= MAX_CLIENT_COMMANDS_PER_FRAME) {
+      flushQueuedCommands();
+      return;
+    }
+    if (commandFlushScheduled) return;
+    commandFlushScheduled = true;
+    queueMicrotask(flushQueuedCommands);
   };
 
   const armWatchdog = () => {
@@ -193,6 +245,7 @@ export function connectPlatformOrderCommands(
         owner_wallet: owner,
         session_public_key: session,
         signature: base58Encode(signature),
+        batch_format: "compact_v1",
       }));
     } catch (error) {
       report(error);
@@ -200,14 +253,7 @@ export function connectPlatformOrderCommands(
     }
   };
 
-  const apply = (raw: unknown) => {
-    let event: PlatformOrderCommandEvent;
-    try {
-      event = platformOrderCommandEvent(raw);
-    } catch (error) {
-      failContract(error instanceof Error ? error.message : "invalid order command event");
-      return;
-    }
+  const apply = (event: PlatformOrderCommandEvent) => {
     if (event.market_id !== market) {
       failContract("order command stream changed its market binding");
       return;
@@ -296,17 +342,13 @@ export function connectPlatformOrderCommands(
       if (closed || socket !== active) return;
       try {
         const decoded = JSON.parse(String(message.data)) as unknown;
-        const events = Array.isArray(decoded) ? decoded : [decoded];
-        if (events.length < 1 || events.length > MAX_SERVER_EVENTS_PER_FRAME) {
-          failContract("order command event batch is invalid");
-          return;
-        }
+        const events = platformOrderCommandEvents(decoded, MAX_SERVER_EVENTS_PER_FRAME);
         for (const event of events) {
           apply(event);
           if (contractFailed) break;
         }
-      } catch {
-        failContract("order command stream returned invalid JSON");
+      } catch (error) {
+        failContract(error instanceof Error ? error.message : "order command stream returned invalid JSON");
       }
     };
     active.onerror = () => report(new Error("order command WebSocket transport failed"));
@@ -358,18 +400,12 @@ export function connectPlatformOrderCommands(
         reject,
         timeout,
       });
-      try {
-        socket!.send(JSON.stringify({
-          type: "command",
-          request_id: requestId,
-          sequence: clientSequence.toString(),
-          command: body,
-        }));
-      } catch (error) {
-        clearTimeout(timeout);
-        pending.delete(requestId);
-        reject(error);
-      }
+      queueCommand(requestId, {
+        type: "command",
+        request_id: requestId,
+        sequence: clientSequence.toString(),
+        command: body,
+      });
     });
   };
 
@@ -391,6 +427,20 @@ export function connectPlatformOrderCommands(
       effectiveRequest: event.effective_request,
       response: event.response,
     };
+  };
+
+  const probe = async (nonce: string): Promise<void> => {
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(nonce)) {
+      throw new TypeError("order command probe nonce is invalid");
+    }
+    const event = await command<Extract<PlatformOrderCommandEvent, { type: "probe_result" }>>(
+      { type: "probe", nonce },
+      "probe_result",
+    );
+    if (event.nonce !== nonce) {
+      failContract("order command probe changed its nonce");
+      throw new StrataContractError("order command probe changed its nonce");
+    }
   };
 
   const authorizeAndPrepare = async (
@@ -594,6 +644,7 @@ export function connectPlatformOrderCommands(
   if (options.signal?.aborted) close();
   return {
     ready,
+    probe,
     challenge,
     execute,
     status,

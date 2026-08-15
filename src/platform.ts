@@ -541,6 +541,11 @@ export type PlatformOrderCommandEvent =
     })
   | (Omit<PlatformOrderCommandSequence, "previous_sequence"> & { readonly type: "ready" })
   | (PlatformOrderCommandSequence & {
+      readonly type: "probe_result";
+      readonly request_id: string;
+      readonly nonce: string;
+    })
+  | (PlatformOrderCommandSequence & {
       readonly type: "challenge_result";
       readonly request_id: string;
       readonly self_trade_prevention: PlatformSelfTradePrevention;

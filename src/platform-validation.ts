@@ -1152,6 +1152,14 @@ export function platformOrderCommandEvent(value: unknown): PlatformOrderCommandE
   }
   const requestId = string(event.request_id, "request_id");
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(requestId)) throw new Error("request_id is invalid");
+  if (type === "probe_result") {
+    exactKeys(event, [...commonKeys, "request_id", "nonce"], "order command probe result");
+    const nonce = string(event.nonce, "nonce");
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(nonce)) {
+      throw new Error("order command probe nonce is invalid");
+    }
+    return { type, ...common(), request_id: requestId, nonce };
+  }
   if (type === "challenge_result") {
     exactKeys(event, [...commonKeys, "request_id", "self_trade_prevention",
       "prevented_order_ids", "effective_request", "response"], "order challenge result");
@@ -1223,4 +1231,57 @@ export function platformOrderCommandEvent(value: unknown): PlatformOrderCommandE
     };
   }
   throw new Error("order command event type is invalid");
+}
+
+export function platformOrderCommandEvents(
+  value: unknown,
+  maximumEvents = 64,
+): PlatformOrderCommandEvent[] {
+  if (Array.isArray(value)) {
+    if (value.length < 1 || value.length > maximumEvents) {
+      throw new Error("order command event batch is invalid");
+    }
+    return value.map(platformOrderCommandEvent);
+  }
+  const candidate = object(value, "order command server frame");
+  if (candidate.type !== "event_batch") return [platformOrderCommandEvent(candidate)];
+  exactKeys(candidate, [
+    "type", "schema_version", "contract_version", "market_id", "stream_id",
+    "first_sequence", "previous_sequence", "server_time_ms", "events",
+  ], "order command compact event batch");
+  version(candidate);
+  const market = marketId(candidate.market_id);
+  const stream = commandStreamId(candidate.stream_id);
+  const firstSequence = atomicString(candidate.first_sequence, "first_sequence", false);
+  const previousSequence = atomicString(candidate.previous_sequence, "previous_sequence");
+  const first = BigInt(firstSequence);
+  const previous = BigInt(previousSequence);
+  if (first !== previous + 1n) throw new Error("order command compact sequence is invalid");
+  const serverTime = integer(candidate.server_time_ms, "server_time_ms");
+  if (!Array.isArray(candidate.events)
+      || candidate.events.length < 1
+      || candidate.events.length > maximumEvents) {
+    throw new Error("order command compact event batch is invalid");
+  }
+  const forbidden = [
+    "schema_version", "contract_version", "market_id", "stream_id", "sequence",
+    "previous_sequence", "server_time_ms",
+  ];
+  return candidate.events.map((raw, index) => {
+    const event = object(raw, `order command compact event[${index}]`);
+    if (forbidden.some((key) => Object.hasOwn(event, key))) {
+      throw new Error("order command compact event repeats shared metadata");
+    }
+    const sequence = first + BigInt(index);
+    return platformOrderCommandEvent({
+      ...event,
+      schema_version: PLATFORM_SCHEMA_VERSION,
+      contract_version: PLATFORM_CONTRACT_VERSION,
+      market_id: market,
+      stream_id: stream,
+      sequence: sequence.toString(),
+      previous_sequence: (sequence - 1n).toString(),
+      server_time_ms: serverTime,
+    });
+  });
 }
