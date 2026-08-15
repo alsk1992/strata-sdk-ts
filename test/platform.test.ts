@@ -1019,7 +1019,7 @@ test("authenticates and correlates persistent order commands with explicit self-
     signature: base58Encode(new Uint8Array(64).fill(5)),
   });
   const streamId = "order_command_stream_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-  sockets[0]!.emit({
+  sockets[0]!.emit([{
     type: "ready",
     schema_version: 2,
     contract_version: "2.0",
@@ -1027,7 +1027,7 @@ test("authenticates and correlates persistent order commands with explicit self-
     stream_id: streamId,
     sequence: "1",
     server_time_ms: 1786550400001,
-  });
+  }]);
   await connection.ready;
 
   const resultPromise = connection.challenge({
@@ -1045,7 +1045,7 @@ test("authenticates and correlates persistent order commands with explicit self-
   assert.equal(command.sequence, "1");
   assert.equal((command.command as Record<string, unknown>).self_trade_prevention, "cancel_maker");
   const response = await v2Fixture("order-challenge");
-  sockets[0]!.emit({
+  sockets[0]!.emit([{
     type: "challenge_result",
     schema_version: 2,
     contract_version: "2.0",
@@ -1069,11 +1069,53 @@ test("authenticates and correlates persistent order commands with explicit self-
     },
     response,
     server_time_ms: 1786550400002,
-  });
+  }]);
   const result = await resultPromise;
   assert.equal(result.selfTradePrevention, "cancel_maker");
   assert.equal(result.response.challenge_id, "oc_11111111111111111111111111111111");
   assert.equal(JSON.stringify(command).includes("venue"), false);
+
+  const statusOne = connection.status(`or_${"0".repeat(32)}`, "batch-one");
+  const statusTwo = connection.status(`or_${"0".repeat(32)}`, "batch-two");
+  const statusCommandOne = JSON.parse(sockets[0]!.sent[2]!) as Record<string, unknown>;
+  const statusCommandTwo = JSON.parse(sockets[0]!.sent[3]!) as Record<string, unknown>;
+  sockets[0]!.emit([
+    {
+      type: "command_error",
+      schema_version: 2,
+      contract_version: "2.0",
+      market_id: marketId,
+      stream_id: streamId,
+      sequence: "3",
+      previous_sequence: "2",
+      request_id: statusCommandOne.request_id,
+      error: {
+        code: "session_expired",
+        message: "The order authorization is invalid or expired.",
+        retryable: false,
+      },
+      server_time_ms: 1786550400003,
+    },
+    {
+      type: "command_error",
+      schema_version: 2,
+      contract_version: "2.0",
+      market_id: marketId,
+      stream_id: streamId,
+      sequence: "4",
+      previous_sequence: "3",
+      request_id: statusCommandTwo.request_id,
+      error: {
+        code: "session_expired",
+        message: "The order authorization is invalid or expired.",
+        retryable: false,
+      },
+      server_time_ms: 1786550400004,
+    },
+  ]);
+  await assert.rejects(statusOne, /invalid or expired/);
+  await assert.rejects(statusTwo, /invalid or expired/);
+  assert.equal(sockets[0]!.closed, false);
   connection.close();
 });
 

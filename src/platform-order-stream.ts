@@ -27,6 +27,7 @@ const MIN_RECONNECT_MS = 100;
 const MAX_RECONNECT_MS = 2_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const HEARTBEAT_TIMEOUT_MS = 30_000;
+const MAX_SERVER_EVENTS_PER_FRAME = 64;
 
 export interface PlatformOrderCommandHandlers {
   /** Receives every validated, contiguous server event, including heartbeats. */
@@ -130,6 +131,7 @@ export function connectPlatformOrderCommands(
   let deadManTimeoutMs: number | undefined;
   let deadManRefreshInput: PlatformDeadManArmInput | undefined;
   let readySettled = false;
+  let contractFailed = false;
   let resolveReady: () => void;
   let rejectReady: (error: Error) => void;
   const pending = new Map<string, PendingCommand>();
@@ -157,6 +159,7 @@ export function connectPlatformOrderCommands(
   };
 
   const failContract = (message: string) => {
+    contractFailed = true;
     const error = new StrataContractError(message);
     report(error);
     rejectPending(message);
@@ -269,6 +272,7 @@ export function connectPlatformOrderCommands(
   const open = () => {
     if (closed) return;
     authenticated = false;
+    contractFailed = false;
     streamId = undefined;
     serverSequence = 0n;
     clientSequence = 0n;
@@ -291,7 +295,16 @@ export function connectPlatformOrderCommands(
     active.onmessage = (message) => {
       if (closed || socket !== active) return;
       try {
-        apply(JSON.parse(String(message.data)) as unknown);
+        const decoded = JSON.parse(String(message.data)) as unknown;
+        const events = Array.isArray(decoded) ? decoded : [decoded];
+        if (events.length < 1 || events.length > MAX_SERVER_EVENTS_PER_FRAME) {
+          failContract("order command event batch is invalid");
+          return;
+        }
+        for (const event of events) {
+          apply(event);
+          if (contractFailed) break;
+        }
       } catch {
         failContract("order command stream returned invalid JSON");
       }
