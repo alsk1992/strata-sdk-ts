@@ -9,18 +9,46 @@ import {
 } from "./client.js";
 import {
   platformAccountSnapshotResponse,
+  platformMakerReputationResponse,
+  platformMakerStatusResponse,
+  platformActionGraphResponse,
   platformAssetsResponse,
+  platformSwapQuoteResponse,
   platformBestBidAskResponse,
   platformBookSnapshotResponse,
+  platformBugSubmitResponse,
+  platformBugsResponse,
+  platformCandlesResponse,
   platformDiscoveryResponse,
   platformFeeScheduleResponse,
+  platformExecutionStatusResponse,
   platformMarketStatusResponse,
+  platformMarkResponse,
+  platformServiceStatusResponse,
   platformMarketsResponse,
   platformOrderChallengeResponse,
   platformOrderPrepareResponse,
   platformOrderStatusResponse,
   platformOrderSubmitResponse,
+  platformPortfolioHistoryResponse,
+  platformPortfolioResponse,
+  platformReferralsResponse,
+  platformReferralClaimResponse,
+  platformReferralLinkResponse,
+  platformRewardsResponse,
   platformTradesResponse,
+  platformTwapChallengeResponse,
+  platformTwapPrepareResponse,
+  platformTwapSubmitResponse,
+  platformTwapsResponse,
+  platformVaultStatusResponse,
+  platformVaultPausePrepareResponse,
+  platformVaultDelegatePrepareResponse,
+  platformVaultPolicyPrepareResponse,
+  platformVaultDepositPrepareResponse,
+  platformVaultWithdrawPrepareResponse,
+  platformVaultSubmitResponse,
+  platformVaultSetupPrepareResponse,
 } from "./platform-validation.js";
 import {
   accountHttpAuthMessage,
@@ -30,6 +58,25 @@ import {
   type PlatformAccountSubscription,
   type PlatformAccountSubscriptionOptions,
 } from "./platform-account-stream.js";
+import {
+  subscribePlatformExecutions,
+  type PlatformExecutionHandlers,
+  type PlatformExecutionSubscription,
+  type PlatformExecutionSubscriptionOptions,
+} from "./platform-execution-stream.js";
+import {
+  subscribePlatformTwaps,
+  type PlatformTwapHandlers,
+  type PlatformTwapSubscription,
+  type PlatformTwapSubscriptionOptions,
+} from "./platform-twap-stream.js";
+import {
+  subscribePlatformMaker,
+  type PlatformMakerIdentity,
+  type PlatformMakerHandlers,
+  type PlatformMakerSubscription,
+  type PlatformMakerSubscriptionOptions,
+} from "./platform-maker-stream.js";
 import {
   subscribePlatformMarketData,
   type PlatformMarketDataHandlers,
@@ -42,19 +89,41 @@ import {
   type PlatformOrderCommandHandlers,
   type PlatformOrderCommandOptions,
 } from "./platform-order-stream.js";
+import {
+  verifyOrderTransaction,
+  verifyTwapTransaction,
+} from "./transaction-verifier.js";
+import {
+  PLATFORM_SESSION_DEFAULT_MAXIMUM_TOLERANCE_BPS,
+  PLATFORM_SESSION_DEFAULT_MINIMUM_INTERVAL_SECONDS,
+  PLATFORM_SESSION_MAX_SPENDING_LIMITS,
+} from "./platform.js";
 import type {
   PageRequest,
   PlatformAccountSigner,
   PlatformAccountSnapshot,
   PlatformAccountSnapshotResponse,
+  PlatformMakerReputationResponse,
+  PlatformMakerStatusResponse,
+  PlatformActionGraphResponse,
   PlatformAssetsResponse,
+  PlatformSwapQuoteInput,
+  PlatformSwapQuoteResponse,
   PlatformBestBidAskResponse,
   PlatformBookSnapshotResponse,
+  PlatformBugSubmitInput,
+  PlatformBugSubmitResponse,
+  PlatformBugsResponse,
+  PlatformCandlesResponse,
   PlatformDiscoveryResponse,
   PlatformFeeScheduleResponse,
+  PlatformExecutionStatusResponse,
   PlatformMarketStatusResponse,
+  PlatformMarkResponse,
+  PlatformServiceStatusResponse,
   PlatformMarketsResponse,
   PlatformOrderChallengeInput,
+  PlatformOrderVerificationContext,
   PlatformOrderChallengeResponse,
   PlatformOrderExecuteInput,
   PlatformOrderExecuteOperation,
@@ -64,7 +133,42 @@ import type {
   PlatformOrderStatusResponse,
   PlatformOrderSubmitInput,
   PlatformOrderSubmitResponse,
+  PlatformPortfolioHistoryRange,
+  PlatformPortfolioHistoryResponse,
+  PlatformPortfolioResponse,
+  PlatformReferralsResponse,
+  PlatformReferralClaimInput,
+  PlatformReferralClaimResponse,
+  PlatformReferralLinkInput,
+  PlatformReferralLinkResponse,
+  PlatformRewardsResponse,
   PlatformTradesResponse,
+  PlatformTwapChallengeInput,
+  PlatformTwapVerificationContext,
+  PlatformTwapChallengeResponse,
+  PlatformTwapExecuteInput,
+  PlatformTwapExecuteOperation,
+  PlatformTwapPrepareInput,
+  PlatformTwapPrepareResponse,
+  PlatformTwapSubmitInput,
+  PlatformTwapSubmitResponse,
+  PlatformTwapsResponse,
+  PlatformVaultStatusInput,
+  PlatformVaultStatusResponse,
+  PlatformVaultPausePrepareInput,
+  PlatformVaultPausePrepareResponse,
+  PlatformVaultDelegatePrepareInput,
+  PlatformVaultDelegatePrepareResponse,
+  PlatformVaultPolicyPrepareInput,
+  PlatformVaultPolicyPrepareResponse,
+  PlatformVaultDepositPrepareInput,
+  PlatformVaultDepositPrepareResponse,
+  PlatformVaultWithdrawPrepareInput,
+  PlatformVaultSubmitInput,
+  PlatformVaultSubmitResponse,
+  PlatformVaultWithdrawPrepareResponse,
+  PlatformVaultSetupPrepareInput,
+  PlatformVaultSetupPrepareResponse,
 } from "./platform.js";
 import { DEFAULT_API_BASE, type StrataSessionSigner } from "./types.js";
 
@@ -82,6 +186,10 @@ export interface StrataPlatformClientOptions {
 export interface PlatformDiscoveryModule {
   /** Fetch the operations currently available to this client. */
   read(): Promise<PlatformDiscoveryResponse>;
+  /** Fetch the complete entity, operation, and workflow graph with live gates. */
+  graph(): Promise<PlatformActionGraphResponse>;
+  /** Read product-level readiness and the number of live mapped operations. */
+  status(): Promise<PlatformServiceStatusResponse>;
 }
 
 export interface PlatformAssetsModule {
@@ -92,12 +200,70 @@ export interface PlatformMarketsModule {
   list(request?: PageRequest): Promise<PlatformMarketsResponse>;
 }
 
+export interface PlatformQuotesModule {
+  /** Request short-lived exact-input customer economics between catalog assets. */
+  swap(request: PlatformSwapQuoteInput): Promise<PlatformSwapQuoteResponse>;
+}
+
 export interface PlatformBookRequest {
   readonly depth?: number;
 }
 
 export interface PlatformTradesRequest {
   readonly limit?: number;
+}
+
+export interface PlatformCandlesRequest {
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly resolutionSeconds?: number;
+}
+
+export interface PlatformMarketDataModule {
+  candles(marketId: string, request: PlatformCandlesRequest): Promise<PlatformCandlesResponse>;
+  mark(marketId: string): Promise<PlatformMarkResponse>;
+}
+
+export interface PlatformExecutionsModule {
+  /** Recover prepared state or a restart-durable confirmed receipt. */
+  status(marketId: string, executionId: string): Promise<PlatformExecutionStatusResponse>;
+  /** Stream sequenced prepared/confirmed/expired state for watched executions in one market. */
+  subscribe(
+    marketId: string,
+    executionIds: readonly string[],
+    handlers: PlatformExecutionHandlers,
+    options?: PlatformExecutionSubscriptionOptions,
+  ): Promise<PlatformExecutionSubscription>;
+}
+
+export interface PlatformAlgosModule {
+  challenge(
+    marketId: string,
+    request: PlatformTwapChallengeInput,
+  ): Promise<PlatformTwapChallengeResponse>;
+  prepare(
+    marketId: string,
+    request: PlatformTwapPrepareInput,
+  ): Promise<PlatformTwapPrepareResponse>;
+  submit(
+    marketId: string,
+    request: PlatformTwapSubmitInput,
+  ): Promise<PlatformTwapSubmitResponse>;
+  /** Complete an externally authorized place or cancel flow. */
+  execute(marketId: string, request: PlatformTwapExecuteInput): Promise<PlatformTwapSubmitResponse>;
+  /** Read sanitized public progress for wallet-owned and vault-owned TWAPs. */
+  twaps(marketId: string, walletAddress: string): Promise<PlatformTwapsResponse>;
+  /** Stream sequenced TWAP progress for a wallet across discoverable markets. */
+  subscribe(
+    walletAddress: string,
+    handlers: PlatformTwapHandlers,
+    options?: PlatformTwapSubscribeOptions,
+  ): Promise<PlatformTwapSubscription>;
+}
+
+export interface PlatformTwapSubscribeOptions extends PlatformTwapSubscriptionOptions {
+  /** Omit to stream every currently discoverable Strata market. */
+  readonly marketIds?: readonly string[];
 }
 
 export interface PlatformBooksModule {
@@ -141,12 +307,132 @@ export interface PlatformAccountModule {
     signer: PlatformAccountSigner,
     request?: PlatformAccountRequest,
   ): Promise<PlatformAccountSnapshot>;
+  /**
+   * The whole account in one public read, by wallet address: balances,
+   * positions, open orders, and recent fills across every live market. No
+   * signature, no session key, no market selection.
+   */
+  read(walletAddress: string): Promise<PlatformPortfolioResponse>;
+  /** Alias of `read`. */
+  portfolio(walletAddress: string): Promise<PlatformPortfolioResponse>;
+  /** Read genuine stored account-equity history without synthesizing earlier values. */
+  portfolioHistory(
+    walletAddress: string,
+    range?: PlatformPortfolioHistoryRange,
+  ): Promise<PlatformPortfolioHistoryResponse>;
   /** Stream signed private order and fill state across discoverable markets. */
   subscribe(
     signer: PlatformAccountSigner,
     handlers: PlatformAccountHandlers,
     options?: PlatformAccountSubscribeOptions,
   ): Promise<PlatformAccountSubscription>;
+}
+
+export interface PlatformMakerReputationAuthorizedInput {
+  readonly marketId: string;
+  readonly walletAddress: string;
+  readonly authorizationTimeMs: number;
+  readonly authorizationSignature: string;
+}
+
+export type PlatformMakerStatusAuthorizedInput = PlatformMakerReputationAuthorizedInput;
+
+export interface PlatformMarketMakingModule {
+  /**
+   * A maker's products, exposure, health, and kill state in one market — public
+   * by wallet address, no signature. A signer is accepted for compatibility (its
+   * public key names the maker).
+   */
+  status(marketId: string, maker: PlatformMakerIdentity): Promise<PlatformMakerStatusResponse>;
+  /** Stream the maker's fills and product/exposure changes for one market (public by wallet). */
+  subscribe(
+    marketId: string,
+    maker: PlatformMakerIdentity,
+    handlers: PlatformMakerHandlers,
+    options?: PlatformMakerSubscriptionOptions,
+  ): Promise<PlatformMakerSubscription>;
+  /** A maker's reliability record in one market — public by wallet address. */
+  reputation(
+    marketId: string,
+    maker: PlatformMakerIdentity,
+  ): Promise<PlatformMakerReputationResponse>;
+  /** @deprecated Reads are public; kept for older signer-less adapters. */
+  statusAuthorizationPayload(
+    marketId: string,
+    walletAddress: string,
+    authorizationTimeMs: number,
+  ): Uint8Array;
+  /** @deprecated Reads are public; a signed request is still accepted. */
+  statusAuthorized(
+    request: PlatformMakerStatusAuthorizedInput,
+  ): Promise<PlatformMakerStatusResponse>;
+  /** @deprecated Reads are public; kept for older signer-less adapters. */
+  reputationAuthorizationPayload(
+    marketId: string,
+    walletAddress: string,
+    authorizationTimeMs: number,
+  ): Uint8Array;
+  /** @deprecated Reads are public; a signed request is still accepted. */
+  reputationAuthorized(
+    request: PlatformMakerReputationAuthorizedInput,
+  ): Promise<PlatformMakerReputationResponse>;
+}
+
+export interface PlatformVaultModule {
+  /** Read sealed owner state and, optionally, one external session. */
+  status(request: PlatformVaultStatusInput): Promise<PlatformVaultStatusResponse>;
+  /** Prepare an owner-verified pause or resume transaction for external signing. */
+  preparePause(request: PlatformVaultPausePrepareInput): Promise<PlatformVaultPausePrepareResponse>;
+  /** Prepare protected onboarding or session replacement for external owner signing. */
+  prepareSetup(request: PlatformVaultSetupPrepareInput): Promise<PlatformVaultSetupPrepareResponse>;
+  /** Prepare destructive external-session revocation for external owner signing. */
+  prepareDelegate(
+    request: PlatformVaultDelegatePrepareInput,
+  ): Promise<PlatformVaultDelegatePrepareResponse>;
+  /** Prepare a blocked or restricted withdrawal-access policy for owner signing. */
+  preparePolicy(request: PlatformVaultPolicyPrepareInput): Promise<PlatformVaultPolicyPrepareResponse>;
+  /** Prepare an exact owner-funded deposit for external owner signing. */
+  prepareDeposit(
+    request: PlatformVaultDepositPrepareInput,
+  ): Promise<PlatformVaultDepositPrepareResponse>;
+  /** Prepare an exact destination-bound withdrawal for external owner signing. */
+  prepareWithdrawal(
+    request: PlatformVaultWithdrawPrepareInput,
+  ): Promise<PlatformVaultWithdrawPrepareResponse>;
+  /**
+   * Submit an owner-signed prepared Vault transaction. Strata verifies it is
+   * exactly the prepared transaction, pays the fee when the preparation was
+   * sponsored, and broadcasts it. Idempotent per `idempotencyKey`.
+   */
+  submit(request: PlatformVaultSubmitInput): Promise<PlatformVaultSubmitResponse>;
+  /** Durable outcome of a submission (`submitted` → `confirmed` | `failed`). */
+  submission(preparationId: string): Promise<PlatformVaultSubmitResponse>;
+}
+
+export interface PlatformRewardsRequest {
+  readonly walletAddress?: string;
+  readonly limit?: number;
+}
+
+export interface PlatformRewardsModule {
+  read(request?: PlatformRewardsRequest): Promise<PlatformRewardsResponse>;
+}
+
+export interface PlatformReferralsModule {
+  /** Exact bytes the referred wallet signs outside Strata. */
+  linkAuthorizationPayload(referralCode: string): Uint8Array;
+  /** Exact bytes the claiming wallet signs outside Strata. */
+  claimAuthorizationPayload(payoutWalletAddress: string): Uint8Array;
+  read(walletAddress: string): Promise<PlatformReferralsResponse>;
+  link(request: PlatformReferralLinkInput): Promise<PlatformReferralLinkResponse>;
+  claim(request: PlatformReferralClaimInput): Promise<PlatformReferralClaimResponse>;
+}
+
+export interface PlatformBugsModule {
+  /** Exact bytes the owner wallet signs outside Strata. */
+  authorizationPayload(message: string): Uint8Array;
+  read(walletAddress: string): Promise<PlatformBugsResponse>;
+  submit(request: PlatformBugSubmitInput): Promise<PlatformBugSubmitResponse>;
 }
 
 export interface PlatformOrdersModule {
@@ -192,9 +478,18 @@ export class StrataPlatformClient {
   readonly discovery: PlatformDiscoveryModule;
   readonly assets: PlatformAssetsModule;
   readonly markets: PlatformMarketsModule;
+  readonly quotes: PlatformQuotesModule;
   readonly books: PlatformBooksModule;
+  readonly marketData: PlatformMarketDataModule;
+  readonly executions: PlatformExecutionsModule;
+  readonly algos: PlatformAlgosModule;
   readonly account: PlatformAccountModule;
+  readonly marketMaking: PlatformMarketMakingModule;
+  readonly vault: PlatformVaultModule;
   readonly orders: PlatformOrdersModule;
+  readonly rewards: PlatformRewardsModule;
+  readonly referrals: PlatformReferralsModule;
+  readonly bugs: PlatformBugsModule;
   private capabilityCache?: {
     readonly value: PlatformDiscoveryResponse;
     readonly expiresAtMs: number;
@@ -224,9 +519,14 @@ export class StrataPlatformClient {
       throw new TypeError("a Fetch-compatible implementation is required");
     }
     this.fetch = fetchImpl;
-    this.discovery = { read: () => this.readDiscovery(true) };
+    this.discovery = {
+      read: () => this.readDiscovery(true),
+      graph: () => this.readActionGraph(),
+      status: () => this.readPlatformStatus(),
+    };
     this.assets = { list: (request) => this.listAssets(request) };
     this.markets = { list: (request) => this.listMarkets(request) };
+    this.quotes = { swap: (request) => this.swapQuote(request) };
     this.books = {
       snapshot: (marketId, request) => this.bookSnapshot(marketId, request),
       bestBidAsk: (marketId) => this.bestBidAsk(marketId),
@@ -236,11 +536,69 @@ export class StrataPlatformClient {
       subscribe: (marketId, handlers, streamOptions) =>
         this.subscribeBook(marketId, handlers, streamOptions),
     };
+    this.marketData = {
+      candles: (marketId, request) => this.candles(marketId, request),
+      mark: (marketId) => this.mark(marketId),
+    };
+    this.executions = {
+      status: (marketId, executionId) => this.executionStatus(marketId, executionId),
+      subscribe: (marketId, executionIds, handlers, streamOptions) =>
+        this.subscribeExecutions(marketId, executionIds, handlers, streamOptions),
+    };
+    this.algos = {
+      challenge: (marketId, request) => this.twapChallenge(marketId, request),
+      prepare: (marketId, request) => this.twapPrepare(marketId, request),
+      submit: (marketId, request) => this.twapSubmit(marketId, request),
+      execute: (marketId, request) => this.executeTwap(marketId, request),
+      twaps: (marketId, walletAddress) => this.twaps(marketId, walletAddress),
+      subscribe: (walletAddress, handlers, streamOptions) =>
+        this.subscribeTwaps(walletAddress, handlers, streamOptions),
+    };
     this.account = {
       market: (marketId, signer, request) => this.accountMarket(marketId, signer, request),
       snapshot: (signer, request) => this.accountSnapshot(signer, request),
+      read: (walletAddress) => this.portfolio(walletAddress),
+      portfolio: (walletAddress) => this.portfolio(walletAddress),
+      portfolioHistory: (walletAddress, range) => this.portfolioHistory(walletAddress, range),
       subscribe: (signer, handlers, streamOptions) =>
         this.subscribeAccount(signer, handlers, streamOptions),
+    };
+    this.marketMaking = {
+      statusAuthorizationPayload: (marketId, walletAddress, authorizationTimeMs) =>
+        makerStatusAuthMessage(marketId, walletAddress, authorizationTimeMs),
+      status: (marketId, signer) => this.makerStatus(marketId, signer),
+      statusAuthorized: (request) => this.makerStatusAuthorized(request),
+      subscribe: (marketId, signer, handlers, streamOptions) =>
+        this.subscribeMaker(marketId, signer, handlers, streamOptions),
+      reputationAuthorizationPayload: (marketId, walletAddress, authorizationTimeMs) =>
+        makerReputationAuthMessage(marketId, walletAddress, authorizationTimeMs),
+      reputation: (marketId, signer) => this.makerReputation(marketId, signer),
+      reputationAuthorized: (request) => this.makerReputationAuthorized(request),
+    };
+    this.vault = {
+      status: (request) => this.vaultStatus(request),
+      preparePause: (request) => this.vaultPreparePause(request),
+      prepareSetup: (request) => this.vaultPrepareSetup(request),
+      prepareDelegate: (request) => this.vaultPrepareDelegate(request),
+      preparePolicy: (request) => this.vaultPreparePolicy(request),
+      prepareDeposit: (request) => this.vaultPrepareDeposit(request),
+      prepareWithdrawal: (request) => this.vaultPrepareWithdrawal(request),
+      submit: (request) => this.vaultSubmit(request),
+      submission: (preparationId) => this.vaultSubmission(preparationId),
+    };
+    this.rewards = { read: (request) => this.rewardsRead(request) };
+    this.referrals = {
+      linkAuthorizationPayload: (referralCode) => referralLinkAuthorizationPayload(referralCode),
+      claimAuthorizationPayload: (payoutWalletAddress) =>
+        referralClaimAuthorizationPayload(payoutWalletAddress),
+      read: (walletAddress) => this.referralsRead(walletAddress),
+      link: (request) => this.referralLink(request),
+      claim: (request) => this.referralClaim(request),
+    };
+    this.bugs = {
+      authorizationPayload: (message) => bugAuthorizationPayload(message),
+      read: (walletAddress) => this.bugsRead(walletAddress),
+      submit: (request) => this.bugSubmit(request),
     };
     this.orders = {
       challenge: (marketId, request) => this.orderChallenge(marketId, request),
@@ -276,6 +634,15 @@ export class StrataPlatformClient {
     }
   }
 
+  private async readActionGraph(): Promise<PlatformActionGraphResponse> {
+    return platformActionGraphResponse(await this.get("/v2/action-graph"));
+  }
+
+  private async readPlatformStatus(): Promise<PlatformServiceStatusResponse> {
+    await this.requireReadCapability("platform.status.read");
+    return platformServiceStatusResponse(await this.get("/v2/status"));
+  }
+
   private async listAssets(request: PageRequest = {}): Promise<PlatformAssetsResponse> {
     await this.requireReadCapability("assets.read");
     return platformAssetsResponse(await this.get(`/v2/assets${pageQuery(request)}`));
@@ -284,6 +651,39 @@ export class StrataPlatformClient {
   private async listMarkets(request: PageRequest = {}): Promise<PlatformMarketsResponse> {
     await this.requireReadCapability("markets.read");
     return platformMarketsResponse(await this.get(`/v2/markets${pageQuery(request)}`));
+  }
+
+  private async swapQuote(request: PlatformSwapQuoteInput): Promise<PlatformSwapQuoteResponse> {
+    await this.requireReadCapability("quotes.swap.read", "http");
+    const inputAssetId = checkedAssetId(request.inputAssetId, "inputAssetId");
+    const outputAssetId = checkedAssetId(request.outputAssetId, "outputAssetId");
+    if (inputAssetId === outputAssetId) {
+      throw new TypeError("inputAssetId and outputAssetId must differ");
+    }
+    const amountInAtoms = checkedAtomic(request.amountInAtoms, "amountInAtoms", false);
+    const maximumToleranceBps = request.maximumToleranceBps ?? 0;
+    checkedInteger(maximumToleranceBps, "maximumToleranceBps", 0, 1_000);
+    const response = platformSwapQuoteResponse(await this.post("/v2/quotes", {
+      input_asset_id: inputAssetId,
+      output_asset_id: outputAssetId,
+      amount_in_atoms: amountInAtoms,
+      maximum_tolerance_bps: maximumToleranceBps,
+    }));
+    if (
+      response.input_asset_id !== inputAssetId
+      || response.output_asset_id !== outputAssetId
+      || response.amount_in_atoms !== amountInAtoms
+      || response.maximum_tolerance_bps !== maximumToleranceBps
+    ) {
+      throw new StrataContractError("swap quote bindings do not match request");
+    }
+    if (BigInt(response.amount_in_consumed_atoms) > BigInt(amountInAtoms)) {
+      throw new StrataContractError("swap quote consumes more than the requested input");
+    }
+    if (BigInt(response.minimum_output_atoms) > BigInt(response.amount_out_atoms)) {
+      throw new StrataContractError("swap quote minimum exceeds expected output");
+    }
+    return response;
   }
 
   private async bookSnapshot(
@@ -336,6 +736,628 @@ export class StrataPlatformClient {
     );
     assertMarket(response.market_id, id);
     return response;
+  }
+
+  private async candles(
+    marketId: string,
+    request: PlatformCandlesRequest,
+  ): Promise<PlatformCandlesResponse> {
+    await this.requireReadCapability("market_data.candles.read", "http");
+    const id = checkedMarketId(marketId);
+    if (!Number.isSafeInteger(request.fromMs) || !Number.isSafeInteger(request.toMs)
+        || request.fromMs < 0 || request.toMs <= request.fromMs) {
+      throw new TypeError("candle range must use increasing non-negative millisecond timestamps");
+    }
+    const resolution = request.resolutionSeconds ?? 300;
+    if (!Number.isSafeInteger(resolution) || resolution < 60
+        || resolution > 86_400 || resolution % 60 !== 0) {
+      throw new TypeError("candle resolution must be a whole number of minutes up to one day");
+    }
+    const query = new URLSearchParams({
+      from_ms: String(request.fromMs),
+      to_ms: String(request.toMs),
+      resolution_seconds: String(resolution),
+    });
+    const response = platformCandlesResponse(
+      await this.get(`/v2/markets/${id}/candles?${query.toString()}`),
+    );
+    assertMarket(response.market_id, id);
+    return response;
+  }
+
+  private async mark(marketId: string): Promise<PlatformMarkResponse> {
+    await this.requireReadCapability("market_data.marks.read", "http");
+    const id = checkedMarketId(marketId);
+    const response = platformMarkResponse(await this.get(`/v2/markets/${id}/marks`));
+    assertMarket(response.market_id, id);
+    return response;
+  }
+
+  private async subscribeExecutions(
+    marketId: string,
+    executionIds: readonly string[],
+    handlers: PlatformExecutionHandlers,
+    options: PlatformExecutionSubscriptionOptions = {},
+  ): Promise<PlatformExecutionSubscription> {
+    await this.requireReadCapability("execution.stream", "websocket");
+    return subscribePlatformExecutions(
+      this.apiBase,
+      checkedMarketId(marketId),
+      executionIds,
+      handlers,
+      options,
+    );
+  }
+
+  private async executionStatus(
+    marketId: string,
+    executionId: string,
+  ): Promise<PlatformExecutionStatusResponse> {
+    await this.requireReadCapability("execution.status.read", "http");
+    const id = checkedMarketId(marketId);
+    const execution = executionId.trim();
+    if (!/^se_[0-9a-f]{32}$/.test(execution)) {
+      throw new TypeError("executionId must be an opaque Strata execution handle");
+    }
+    const response = platformExecutionStatusResponse(
+      await this.get(`/v2/markets/${id}/executions/${execution}`),
+    );
+    assertMarket(response.market_id, id);
+    if (response.execution_id !== execution) {
+      throw new StrataContractError("response execution does not match request");
+    }
+    return response;
+  }
+
+  private async twapChallenge(
+    marketId: string,
+    request: PlatformTwapChallengeInput,
+  ): Promise<PlatformTwapChallengeResponse> {
+    await this.requireCapability(
+      request.action === "place" ? "algos.twap.place" : "algos.twap.cancel",
+      "submit",
+    );
+    const id = checkedMarketId(marketId);
+    const body = twapOperationWire(request);
+    const response = platformTwapChallengeResponse(
+      await this.post(`/v2/markets/${id}/twaps/challenge`, body),
+    );
+    assertMarket(response.market_id, id);
+    if (response.action !== request.action) {
+      throw new StrataContractError("TWAP challenge action does not match request");
+    }
+    return response;
+  }
+
+  private async twapPrepare(
+    marketId: string,
+    request: PlatformTwapPrepareInput,
+  ): Promise<PlatformTwapPrepareResponse> {
+    const id = checkedMarketId(marketId);
+    let body: Record<string, unknown>;
+    if ("operation" in request) {
+      // Direct: bind and build in one step; the transaction signature is the
+      // authorization.
+      await this.requireCapability(
+        request.operation.action === "place" ? "algos.twap.place" : "algos.twap.cancel",
+        "submit",
+      );
+      body = twapOperationWire(request.operation);
+    } else {
+      body = {
+        challenge_id: checkedHandle(request.challengeId, "challengeId", "twc_"),
+        authorization_signature: checkedBase58Signature(
+          request.authorizationSignature,
+          "authorizationSignature",
+        ),
+      };
+    }
+    const response = platformTwapPrepareResponse(
+      await this.post(`/v2/markets/${id}/twaps/prepare`, body),
+    );
+    assertMarket(response.market_id, id);
+    if ("operation" in request && response.action !== request.operation.action) {
+      throw new StrataContractError("prepared TWAP action does not match request");
+    }
+    return response;
+  }
+
+  private async twapSubmit(
+    marketId: string,
+    request: PlatformTwapSubmitInput,
+  ): Promise<PlatformTwapSubmitResponse> {
+    const id = checkedMarketId(marketId);
+    const twapControlId = checkedHandle(
+      request.twapControlId,
+      "twapControlId",
+      "twctl_",
+    );
+    const signedTransactionBase64 = request.signedTransactionBase64.trim();
+    decodeBase64(signedTransactionBase64);
+    const response = platformTwapSubmitResponse(
+      await this.post(`/v2/markets/${id}/twaps/submit`, {
+        twap_control_id: twapControlId,
+        signed_transaction_base64: signedTransactionBase64,
+        idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
+      }),
+    );
+    assertMarket(response.market_id, id);
+    if (response.twap_control_id !== twapControlId) {
+      throw new StrataContractError("TWAP receipt does not match submitted control ID");
+    }
+    return response;
+  }
+
+  private async executeTwap(
+    marketId: string,
+    request: PlatformTwapExecuteInput,
+  ): Promise<PlatformTwapSubmitResponse> {
+    if (request.verifyTransaction !== undefined && typeof request.verifyTransaction !== "function") {
+      throw new TypeError("verifyTransaction must be a function when supplied");
+    }
+    const signerPublicKey = canonicalPublicKey(request.signer.publicKey, "signer.publicKey");
+    if (typeof request.signer.signTransaction !== "function") {
+      throw new TypeError("signer must provide signTransaction");
+    }
+    const id = checkedMarketId(marketId);
+    const operation = {
+      ...request.operation,
+      sessionPublicKey: signerPublicKey,
+    } as PlatformTwapChallengeInput;
+    // One signature: the action is bound and built in one step and the
+    // session signs only the resulting transaction.
+    const prepared = await this.twapPrepare(id, { operation });
+    if (
+      operation.action === "cancel"
+        ? prepared.twap_id !== checkedTwapId(operation.twapId)
+        : !prepared.twap_id.startsWith("twap_")
+    ) {
+      throw new StrataContractError("prepared TWAP control does not match the request");
+    }
+    const ownerWallet = canonicalPublicKey(request.operation.ownerWallet, "ownerWallet");
+    const verification: PlatformTwapVerificationContext = {
+      operation,
+      marketId: id,
+      prepared,
+      ownerWallet,
+      sessionPublicKey: signerPublicKey,
+    };
+    if (request.verifyTransaction) {
+      await request.verifyTransaction(verification);
+    } else {
+      verifyTwapTransaction(verification);
+    }
+    const signedTransactionBase64 = await request.signer.signTransaction(
+      prepared.transaction_base64,
+    );
+    decodeBase64(signedTransactionBase64);
+    return this.twapSubmit(marketId, {
+      twapControlId: prepared.twap_control_id,
+      signedTransactionBase64,
+      idempotencyKey: request.idempotencyKey ?? prepared.twap_control_id,
+    });
+  }
+
+  private async subscribeTwaps(
+    walletAddress: string,
+    handlers: PlatformTwapHandlers,
+    options: PlatformTwapSubscribeOptions = {},
+  ): Promise<PlatformTwapSubscription> {
+    await this.requireReadCapability("algos.twap.stream", "websocket");
+    const wallet = canonicalPublicKey(walletAddress, "walletAddress");
+    const marketIds = await this.accountMarketIds(options.marketIds);
+    const { marketIds: _marketIds, ...streamOptions } = options;
+    return subscribePlatformTwaps(this.apiBase, marketIds, wallet, handlers, streamOptions);
+  }
+
+  private async twaps(marketId: string, walletAddress: string): Promise<PlatformTwapsResponse> {
+    await this.requireReadCapability("algos.twap.read", "http");
+    const id = checkedMarketId(marketId);
+    const wallet = canonicalPublicKey(walletAddress, "walletAddress");
+    const response = platformTwapsResponse(
+      await this.get(`/v2/markets/${id}/account/${wallet}/twaps`),
+    );
+    assertMarket(response.market_id, id);
+    if (response.wallet_address !== wallet) {
+      throw new StrataContractError("response wallet does not match request");
+    }
+    return response;
+  }
+
+  private async portfolio(walletAddress: string): Promise<PlatformPortfolioResponse> {
+    await this.requireReadCapability("portfolio.read", "http");
+    const wallet = canonicalPublicKey(walletAddress, "walletAddress");
+    const response = platformPortfolioResponse(
+      await this.get(`/v2/account/${wallet}/portfolio`),
+    );
+    if (response.wallet_address !== wallet) {
+      throw new StrataContractError("portfolio identity does not match request");
+    }
+    return response;
+  }
+
+  private async portfolioHistory(
+    walletAddress: string,
+    range: PlatformPortfolioHistoryRange = "24h",
+  ): Promise<PlatformPortfolioHistoryResponse> {
+    await this.requireReadCapability("portfolio.history.read", "http");
+    const wallet = canonicalPublicKey(walletAddress, "walletAddress");
+    if (range !== "24h" && range !== "7d" && range !== "30d") {
+      throw new TypeError("portfolio history range must be 24h, 7d, or 30d");
+    }
+    const response = platformPortfolioHistoryResponse(
+      await this.get(`/v2/account/${wallet}/portfolio/history?range=${range}`),
+    );
+    if (response.wallet_address !== wallet || response.range !== range) {
+      throw new StrataContractError("portfolio history identity does not match request");
+    }
+    return response;
+  }
+
+  private async vaultStatus(
+    request: PlatformVaultStatusInput,
+  ): Promise<PlatformVaultStatusResponse> {
+    await this.requireReadCapability("vault.status.read", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    const query = new URLSearchParams({ wallet_address: wallet });
+    const session = request.sessionPublicKey === undefined
+      ? undefined
+      : canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+    if (session !== undefined) query.set("session_public_key", session);
+    const response = platformVaultStatusResponse(
+      await this.get(`/v2/vault/status?${query.toString()}`),
+    );
+    if (
+      response.wallet_address !== wallet
+      || (session === undefined && response.session !== null)
+      || (session !== undefined && response.session?.session_public_key !== session)
+    ) {
+      throw new StrataContractError("vault status identity does not match request");
+    }
+    return response;
+  }
+
+  private async vaultPreparePause(
+    request: PlatformVaultPausePrepareInput,
+  ): Promise<PlatformVaultPausePrepareResponse> {
+    await this.requireCapability("vault.pause", "destructive", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    if (typeof request.paused !== "boolean") throw new TypeError("paused must be boolean");
+    const response = platformVaultPausePrepareResponse(
+      await this.post("/v2/vault/pause/prepare", {
+        wallet_address: wallet,
+        paused: request.paused,
+      }),
+    );
+    if (response.wallet_address !== wallet || response.paused !== request.paused) {
+      throw new StrataContractError("vault pause preparation does not match request");
+    }
+    return response;
+  }
+
+  private async vaultPrepareSetup(
+    request: PlatformVaultSetupPrepareInput,
+  ): Promise<PlatformVaultSetupPrepareResponse> {
+    await this.requireCapability("vault.setup", "submit", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    const session = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+    if (wallet === session) throw new TypeError("sessionPublicKey must differ from walletAddress");
+    const market = request.marketId == null ? null : checkedMarketId(request.marketId);
+    const expiresAtMs = request.expiresAtMs ?? null;
+    if (
+      expiresAtMs !== null
+      && (!Number.isSafeInteger(expiresAtMs)
+        || expiresAtMs % 1_000 !== 0
+        || expiresAtMs <= Date.now() + 60_000)
+    ) throw new TypeError("expiresAtMs must be whole seconds at least 60 seconds in the future");
+    const minimumIntervalSeconds = checkedInteger(
+      request.minimumIntervalSeconds ?? PLATFORM_SESSION_DEFAULT_MINIMUM_INTERVAL_SECONDS,
+      "minimumIntervalSeconds",
+      1,
+      86_400,
+    );
+    const maximumToleranceBps = checkedInteger(
+      request.maximumToleranceBps ?? PLATFORM_SESSION_DEFAULT_MAXIMUM_TOLERANCE_BPS,
+      "maximumToleranceBps",
+      1,
+      1_000,
+    );
+    const requestedLimits = request.spendingLimits ?? [];
+    if (requestedLimits.length > PLATFORM_SESSION_MAX_SPENDING_LIMITS) {
+      throw new TypeError("spendingLimits carries at most four assets");
+    }
+    const spendingLimits = requestedLimits.map((limit, index) => ({
+      asset_id: checkedAssetId(limit.assetId, `spendingLimits[${index}].assetId`),
+      maximum_per_execution_atoms: limit.maximumPerExecutionAtoms == null
+        ? null
+        : checkedAtomic(
+          limit.maximumPerExecutionAtoms,
+          `spendingLimits[${index}].maximumPerExecutionAtoms`,
+          false,
+        ),
+    }));
+    if (new Set(spendingLimits.map((limit) => limit.asset_id)).size !== spendingLimits.length) {
+      throw new TypeError("spendingLimits asset IDs must be unique");
+    }
+    const response = platformVaultSetupPrepareResponse(
+      await this.post("/v2/vault/setup/prepare", {
+        wallet_address: wallet,
+        session_public_key: session,
+        market_id: market,
+        expires_at_ms: expiresAtMs,
+        minimum_interval_seconds: minimumIntervalSeconds,
+        maximum_tolerance_bps: maximumToleranceBps,
+        spending_limits: spendingLimits,
+      }),
+    );
+    if (
+      response.wallet_address !== wallet
+      || response.session_public_key !== session
+      || response.market_id !== market
+      || response.expires_at_ms !== expiresAtMs
+      || response.minimum_interval_seconds !== minimumIntervalSeconds
+      || response.maximum_tolerance_bps !== maximumToleranceBps
+      || JSON.stringify(response.spending_limits) !== JSON.stringify(spendingLimits)
+    ) {
+      throw new StrataContractError("vault setup preparation does not match request");
+    }
+    return response;
+  }
+
+  private async vaultPrepareDelegate(
+    request: PlatformVaultDelegatePrepareInput,
+  ): Promise<PlatformVaultDelegatePrepareResponse> {
+    await this.requireCapability("vault.delegate.manage", "destructive", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    const session = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+    if (wallet === session) throw new TypeError("sessionPublicKey must differ from walletAddress");
+    if (request.action !== "revoke") throw new TypeError("vault delegate action must be revoke");
+    const response = platformVaultDelegatePrepareResponse(
+      await this.post("/v2/vault/delegates/prepare", {
+        wallet_address: wallet,
+        session_public_key: session,
+        action: request.action,
+      }),
+    );
+    if (
+      response.wallet_address !== wallet
+      || response.session_public_key !== session
+      || response.action !== request.action
+    ) {
+      throw new StrataContractError("vault delegate preparation does not match request");
+    }
+    return response;
+  }
+
+  private async vaultPreparePolicy(
+    request: PlatformVaultPolicyPrepareInput,
+  ): Promise<PlatformVaultPolicyPrepareResponse> {
+    await this.requireCapability("vault.policy.manage", "destructive", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    const mode = request.withdrawalAccess.mode;
+    if (mode !== "blocked" && mode !== "restricted") {
+      throw new TypeError("withdrawal access mode must be blocked or restricted");
+    }
+    const allowed = request.withdrawalAccess.allowedWalletAddresses.map((address, index) =>
+      canonicalPublicKey(address, `allowedWalletAddresses[${index}]`));
+    if (
+      allowed.length > 8
+      || new Set(allowed).size !== allowed.length
+      || (mode === "blocked" && allowed.length !== 0)
+      || (mode === "restricted" && allowed.length === 0)
+    ) throw new TypeError("withdrawal access policy is inconsistent");
+    const withdrawalAccess = {
+      mode,
+      allowed_wallet_addresses: allowed,
+    };
+    const response = platformVaultPolicyPrepareResponse(
+      await this.post("/v2/vault/policies/prepare", {
+        wallet_address: wallet,
+        withdrawal_access: withdrawalAccess,
+      }),
+    );
+    if (
+      response.wallet_address !== wallet
+      || JSON.stringify(response.withdrawal_access) !== JSON.stringify(withdrawalAccess)
+    ) throw new StrataContractError("vault policy preparation does not match request");
+    return response;
+  }
+
+  private async vaultPrepareDeposit(
+    request: PlatformVaultDepositPrepareInput,
+  ): Promise<PlatformVaultDepositPrepareResponse> {
+    await this.requireCapability("vault.deposit", "submit", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    const market = checkedMarketId(request.marketId);
+    const asset = checkedAssetId(request.assetId, "assetId");
+    const amount = checkedAtomic(request.amountAtoms, "amountAtoms", false);
+    const session = request.sessionPublicKey == null
+      ? null
+      : canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+    if (session !== null && session === wallet) {
+      throw new TypeError("sessionPublicKey must differ from walletAddress");
+    }
+    const response = platformVaultDepositPrepareResponse(
+      await this.post("/v2/vault/deposits/prepare", {
+        wallet_address: wallet,
+        market_id: market,
+        asset_id: asset,
+        amount_atoms: amount,
+        session_public_key: session,
+      }),
+    );
+    if (
+      response.wallet_address !== wallet
+      || response.market_id !== market
+      || response.asset_id !== asset
+      || response.amount_atoms !== amount
+      || response.session_public_key !== session
+    ) throw new StrataContractError("vault deposit preparation does not match request");
+    return response;
+  }
+
+  private async vaultPrepareWithdrawal(
+    request: PlatformVaultWithdrawPrepareInput,
+  ): Promise<PlatformVaultWithdrawPrepareResponse> {
+    await this.requireCapability("vault.withdraw", "destructive", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    const market = checkedMarketId(request.marketId);
+    const asset = checkedAssetId(request.assetId, "assetId");
+    const destination = canonicalPublicKey(
+      request.destinationWalletAddress,
+      "destinationWalletAddress",
+    );
+    const amount = checkedAtomic(request.amountAtoms, "amountAtoms", false);
+    const response = platformVaultWithdrawPrepareResponse(
+      await this.post("/v2/vault/withdrawals/prepare", {
+        wallet_address: wallet,
+        market_id: market,
+        asset_id: asset,
+        destination_wallet_address: destination,
+        amount_atoms: amount,
+      }),
+    );
+    if (
+      response.wallet_address !== wallet
+      || response.market_id !== market
+      || response.asset_id !== asset
+      || response.destination_wallet_address !== destination
+      || response.amount_atoms !== amount
+    ) throw new StrataContractError("vault withdrawal preparation does not match request");
+    return response;
+  }
+
+  private async vaultSubmit(
+    request: PlatformVaultSubmitInput,
+  ): Promise<PlatformVaultSubmitResponse> {
+    await this.requireCapability("vault.relay", "submit");
+    const preparationId = checkedHandle(request.preparationId, "preparationId", "vp_");
+    const signedTransactionBase64 = request.signedTransactionBase64.trim();
+    decodeBase64(signedTransactionBase64);
+    const response = platformVaultSubmitResponse(
+      await this.post("/v2/vault/submit", {
+        preparation_id: preparationId,
+        signed_transaction_base64: signedTransactionBase64,
+        idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
+      }),
+    );
+    if (response.preparation_id !== preparationId) {
+      throw new StrataContractError("vault submission does not match the preparation");
+    }
+    return response;
+  }
+
+  private async vaultSubmission(preparationId: string): Promise<PlatformVaultSubmitResponse> {
+    await this.requireCapability("vault.relay", "submit");
+    const id = checkedHandle(preparationId, "preparationId", "vp_");
+    const response = platformVaultSubmitResponse(await this.get(`/v2/vault/submissions/${id}`));
+    if (response.preparation_id !== id) {
+      throw new StrataContractError("vault submission does not match the preparation");
+    }
+    return response;
+  }
+
+  private async rewardsRead(
+    request: PlatformRewardsRequest = {},
+  ): Promise<PlatformRewardsResponse> {
+    await this.requireReadCapability("rewards.read", "http");
+    const query = new URLSearchParams();
+    const wallet = request.walletAddress === undefined
+      ? undefined
+      : canonicalPublicKey(request.walletAddress, "walletAddress");
+    if (wallet !== undefined) query.set("wallet_address", wallet);
+    if (request.limit !== undefined) {
+      if (!Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 100) {
+        throw new TypeError("reward standings limit must be an integer between 1 and 100");
+      }
+      query.set("limit", String(request.limit));
+    }
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    const response = platformRewardsResponse(await this.get(`/v2/rewards${suffix}`));
+    if (wallet !== undefined && response.owner?.wallet_address !== wallet) {
+      throw new StrataContractError("reward owner does not match request");
+    }
+    if (wallet === undefined && response.owner !== null) {
+      throw new StrataContractError("unrequested private reward owner was returned");
+    }
+    return response;
+  }
+
+  private async referralsRead(walletAddress: string): Promise<PlatformReferralsResponse> {
+    await this.requireReadCapability("referrals.read", "http");
+    const wallet = canonicalPublicKey(walletAddress, "walletAddress");
+    const response = platformReferralsResponse(await this.get(`/v2/referrals/${wallet}`));
+    if (response.wallet_address !== wallet) {
+      throw new StrataContractError("referral owner does not match request");
+    }
+    return response;
+  }
+
+  private async referralLink(
+    request: PlatformReferralLinkInput,
+  ): Promise<PlatformReferralLinkResponse> {
+    await this.requireCapability("referrals.link", "submit", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    const referralCode = checkedReferralCode(request.referralCode);
+    const response = platformReferralLinkResponse(await this.post("/v2/referrals/link", {
+      wallet_address: wallet,
+      referral_code: referralCode,
+      authorization_signature: checkedHexSignature(
+        request.authorizationSignature,
+        "authorizationSignature",
+      ),
+    }));
+    if (response.wallet_address !== wallet || response.referral_code !== referralCode) {
+      throw new StrataContractError("referral link does not match request");
+    }
+    return response;
+  }
+
+  private async referralClaim(
+    request: PlatformReferralClaimInput,
+  ): Promise<PlatformReferralClaimResponse> {
+    await this.requireCapability("referrals.claim", "submit", "http");
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    const payout = request.payoutWalletAddress === undefined
+      ? wallet
+      : canonicalPublicKey(request.payoutWalletAddress, "payoutWalletAddress");
+    const response = platformReferralClaimResponse(await this.post("/v2/referrals/claim", {
+      wallet_address: wallet,
+      payout_wallet_address: payout,
+      authorization_signature: checkedHexSignature(
+        request.authorizationSignature,
+        "authorizationSignature",
+      ),
+    }));
+    if (response.wallet_address !== wallet || response.payout_wallet_address !== payout) {
+      throw new StrataContractError("referral claim does not match request");
+    }
+    return response;
+  }
+
+  private async bugsRead(walletAddress: string): Promise<PlatformBugsResponse> {
+    await this.requireReadCapability("bugs.read", "http");
+    const wallet = canonicalPublicKey(walletAddress, "walletAddress");
+    const response = platformBugsResponse(await this.get(`/v2/bugs/${wallet}`));
+    if (response.wallet_address !== wallet) {
+      throw new StrataContractError("bug report owner does not match request");
+    }
+    return response;
+  }
+
+  private async bugSubmit(request: PlatformBugSubmitInput): Promise<PlatformBugSubmitResponse> {
+    await this.requireCapability("bugs.submit", "submit", "http");
+    const owner = canonicalPublicKey(request.ownerWallet, "ownerWallet");
+    const message = checkedBugMessage(request.message);
+    const authorizationSignature = checkedHexSignature(
+      request.authorizationSignature,
+      "authorizationSignature",
+    );
+    return platformBugSubmitResponse(await this.post("/v2/bugs", {
+      owner_wallet: owner,
+      message,
+      authorization_signature: authorizationSignature,
+    }));
   }
 
   private async subscribeBook(
@@ -400,6 +1422,115 @@ export class StrataPlatformClient {
     };
   }
 
+  private async makerStatus(
+    marketId: string,
+    maker: PlatformMakerIdentity,
+  ): Promise<PlatformMakerStatusResponse> {
+    await this.requireReadCapability("mm.status.read", "http");
+    const id = checkedMarketId(marketId);
+    // Public by wallet address: no signature is sent.
+    return this.readMakerStatus(id, makerWalletAddress(maker));
+  }
+
+  private async makerStatusAuthorized(
+    request: PlatformMakerStatusAuthorizedInput,
+  ): Promise<PlatformMakerStatusResponse> {
+    await this.requireReadCapability("mm.status.read", "http");
+    const id = checkedMarketId(request.marketId);
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    if (!Number.isSafeInteger(request.authorizationTimeMs) || request.authorizationTimeMs < 0) {
+      throw new TypeError("authorizationTimeMs must be a non-negative safe integer");
+    }
+    return this.readMakerStatus(
+      id,
+      wallet,
+      request.authorizationTimeMs,
+      checkedHexSignature(request.authorizationSignature, "authorizationSignature"),
+    );
+  }
+
+  private async readMakerStatus(
+    marketId: string,
+    walletAddress: string,
+    authorizationTimeMs?: number,
+    authorizationSignature?: string,
+  ): Promise<PlatformMakerStatusResponse> {
+    const response = platformMakerStatusResponse(await this.get(
+      `/v2/markets/${marketId}/makers/${walletAddress}`,
+      authorizationSignature === undefined
+        ? {}
+        : {
+          "X-Strata-Auth-Time": String(authorizationTimeMs),
+          "X-Strata-Auth-Signature": authorizationSignature,
+        },
+    ));
+    assertMarket(response.market_id, marketId);
+    if (response.wallet_address !== walletAddress) {
+      throw new StrataContractError("maker status wallet does not match signed request");
+    }
+    return response;
+  }
+
+  private async makerReputation(
+    marketId: string,
+    maker: PlatformMakerIdentity,
+  ): Promise<PlatformMakerReputationResponse> {
+    await this.requireReadCapability("mm.reputation.read", "http");
+    const id = checkedMarketId(marketId);
+    // Public by wallet address: no signature is sent.
+    return this.readMakerReputation(id, makerWalletAddress(maker));
+  }
+
+  private async makerReputationAuthorized(
+    request: PlatformMakerReputationAuthorizedInput,
+  ): Promise<PlatformMakerReputationResponse> {
+    await this.requireReadCapability("mm.reputation.read", "http");
+    const id = checkedMarketId(request.marketId);
+    const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
+    if (!Number.isSafeInteger(request.authorizationTimeMs) || request.authorizationTimeMs < 0) {
+      throw new TypeError("authorizationTimeMs must be a non-negative safe integer");
+    }
+    return this.readMakerReputation(
+      id,
+      wallet,
+      request.authorizationTimeMs,
+      checkedHexSignature(request.authorizationSignature, "authorizationSignature"),
+    );
+  }
+
+  private async readMakerReputation(
+    marketId: string,
+    walletAddress: string,
+    authorizationTimeMs?: number,
+    authorizationSignature?: string,
+  ): Promise<PlatformMakerReputationResponse> {
+    const response = platformMakerReputationResponse(await this.get(
+      `/v2/markets/${marketId}/makers/${walletAddress}/reputation`,
+      authorizationSignature === undefined
+        ? {}
+        : {
+          "X-Strata-Auth-Time": String(authorizationTimeMs),
+          "X-Strata-Auth-Signature": authorizationSignature,
+        },
+    ));
+    assertMarket(response.market_id, marketId);
+    if (response.wallet_address !== walletAddress) {
+      throw new StrataContractError("maker reputation wallet does not match signed request");
+    }
+    return response;
+  }
+
+  private async subscribeMaker(
+    marketId: string,
+    maker: PlatformMakerIdentity,
+    handlers: PlatformMakerHandlers,
+    options: PlatformMakerSubscriptionOptions = {},
+  ): Promise<PlatformMakerSubscription> {
+    await this.requireReadCapability("mm.fills.stream", "websocket");
+    const id = checkedMarketId(marketId);
+    return subscribePlatformMaker(this.apiBase, id, maker, handlers, options);
+  }
+
   private async subscribeAccount(
     signer: PlatformAccountSigner,
     handlers: PlatformAccountHandlers,
@@ -424,80 +1555,7 @@ export class StrataPlatformClient {
   ): Promise<PlatformOrderChallengeResponse> {
     await this.requireCapability("orders.prepare", "prepare");
     const id = checkedMarketId(marketId);
-    const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
-    const sessionPublicKey = canonicalPublicKey(
-      request.sessionPublicKey,
-      "sessionPublicKey",
-    );
-    if (ownerWallet === sessionPublicKey) {
-      throw new TypeError("sessionPublicKey must be distinct from ownerWallet");
-    }
-    let body: Record<string, unknown>;
-    if (request.action === "place") {
-      if (request.side !== "buy" && request.side !== "sell") {
-        throw new TypeError("side must be buy or sell");
-      }
-      if (request.orderType !== "good_until_cancelled" && request.orderType !== "post_only") {
-        throw new TypeError("resting orderType must be good_until_cancelled or post_only");
-      }
-      const clientOrderId = checkedOpaqueInput(request.clientOrderId, "clientOrderId");
-      body = {
-        action: "place",
-        owner_wallet: ownerWallet,
-        session_public_key: sessionPublicKey,
-        account_sequence: checkedAtomic(request.accountSequence, "accountSequence", true),
-        client_order_id: clientOrderId,
-        side: request.side,
-        order_type: request.orderType,
-        limit_price_atoms: checkedAtomic(request.limitPriceAtoms, "limitPriceAtoms", false),
-        size_atoms: checkedAtomic(request.sizeAtoms, "sizeAtoms", false),
-      };
-    } else if (request.action === "cancel") {
-      body = {
-        action: "cancel",
-        owner_wallet: ownerWallet,
-        session_public_key: sessionPublicKey,
-        order_id: checkedOrderId(request.orderId),
-      };
-    } else if (request.action === "cancel_all") {
-      body = {
-        action: "cancel_all",
-        owner_wallet: ownerWallet,
-        session_public_key: sessionPublicKey,
-      };
-    } else if (request.action === "replace") {
-      body = {
-        action: "replace",
-        owner_wallet: ownerWallet,
-        session_public_key: sessionPublicKey,
-        order_id: checkedOrderId(request.orderId),
-        ...orderPlaceWire(request),
-      };
-    } else if (request.action === "batch") {
-      if (request.operations.length < 1 || request.operations.length > 6) {
-        throw new TypeError("order batch must contain between one and six operations");
-      }
-      body = {
-        action: "batch",
-        owner_wallet: ownerWallet,
-        session_public_key: sessionPublicKey,
-        operations: request.operations.map((operation) => {
-          if (operation.action === "place") {
-            return { action: "place", ...orderPlaceWire(operation) };
-          }
-          if (operation.action === "cancel") {
-            return { action: "cancel", order_id: checkedOrderId(operation.orderId) };
-          }
-          return {
-            action: "replace",
-            order_id: checkedOrderId(operation.orderId),
-            ...orderPlaceWire(operation),
-          };
-        }),
-      };
-    } else {
-      throw new TypeError("order action is invalid");
-    }
+    const body = orderOperationWire(request);
     const response = platformOrderChallengeResponse(
       await this.post(`/v2/markets/${id}/orders/challenge`, body),
     );
@@ -514,18 +1572,24 @@ export class StrataPlatformClient {
   ): Promise<PlatformOrderPrepareResponse> {
     await this.requireCapability("orders.prepare", "prepare");
     const id = checkedMarketId(marketId);
-    const challengeId = checkedHandle(request.challengeId, "challengeId", "oc_");
-    const authorizationSignature = checkedBase58Signature(
-      request.authorizationSignature,
-      "authorizationSignature",
-    );
+    // Direct: the operation itself is bound and built in one step; the
+    // session's signature over the returned transaction is the authorization.
+    const body = "operation" in request
+      ? orderOperationWire(request.operation)
+      : {
+        challenge_id: checkedHandle(request.challengeId, "challengeId", "oc_"),
+        authorization_signature: checkedBase58Signature(
+          request.authorizationSignature,
+          "authorizationSignature",
+        ),
+      };
     const response = platformOrderPrepareResponse(
-      await this.post(`/v2/markets/${id}/orders/prepare`, {
-        challenge_id: challengeId,
-        authorization_signature: authorizationSignature,
-      }),
+      await this.post(`/v2/markets/${id}/orders/prepare`, body),
     );
     assertMarket(response.market_id, id);
+    if ("operation" in request && response.action !== request.operation.action) {
+      throw new StrataContractError("prepared order action does not match request");
+    }
     return response;
   }
 
@@ -584,45 +1648,41 @@ export class StrataPlatformClient {
     marketId: string,
     request: PlatformOrderExecuteInput,
   ): Promise<PlatformOrderSubmitResponse> {
-    if (typeof request.verifyTransaction !== "function") {
-      throw new TypeError("verifyTransaction is required");
+    if (request.verifyTransaction !== undefined && typeof request.verifyTransaction !== "function") {
+      throw new TypeError("verifyTransaction must be a function when supplied");
     }
     const signerPublicKey = canonicalPublicKey(request.signer.publicKey, "signer.publicKey");
-    if (typeof request.signer.signMessage !== "function"
-        || typeof request.signer.signTransaction !== "function") {
-      throw new TypeError("signer must provide signMessage and signTransaction");
+    if (typeof request.signer.signTransaction !== "function") {
+      throw new TypeError("signer must provide signTransaction");
     }
-    const challenge = await this.orderChallenge(marketId, {
+    const id = checkedMarketId(marketId);
+    const operation = {
       ...request.operation,
       sessionPublicKey: signerPublicKey,
-    } as PlatformOrderChallengeInput);
-    const authorization = await validateOrderAuthorization(
-      challenge,
-      request.operation,
-      signerPublicKey,
-    );
-    const signature = await request.signer.signMessage(authorization);
-    if (!(signature instanceof Uint8Array) || signature.length !== 64) {
-      throw new StrataContractError("order authorization signature must contain 64 bytes");
-    }
-    const prepared = await this.orderPrepare(marketId, {
-      challengeId: challenge.challenge_id,
-      authorizationSignature: base58Encode(signature),
-    });
-    if (
-      prepared.action !== challenge.action
-      || prepared.order_ids.length !== challenge.order_ids.length
-      || prepared.order_ids.some((orderId, index) => orderId !== challenge.order_ids[index])
-      || prepared.expires_at_ms !== challenge.expires_at_ms
-    ) {
-      throw new StrataContractError("prepared order control changed the signed bindings");
-    }
-    await request.verifyTransaction({
-      challenge,
+    } as PlatformOrderChallengeInput;
+    // One signature: the operation is bound and built in one step and the
+    // session signs only the resulting transaction, after the SDK has decoded
+    // it and checked it is exactly this operation.
+    const prepared = await this.orderPrepare(id, { operation });
+    const ownerWallet = canonicalPublicKey(request.operation.ownerWallet, "ownerWallet");
+    const verification: PlatformOrderVerificationContext = {
+      operation,
+      marketId: id,
       prepared,
-      ownerWallet: canonicalPublicKey(request.operation.ownerWallet, "ownerWallet"),
+      ownerWallet,
       sessionPublicKey: signerPublicKey,
-    });
+    };
+    if (request.verifyTransaction) {
+      await request.verifyTransaction(verification);
+    } else {
+      await verifyOrderTransaction({
+        marketId: id,
+        operation,
+        prepared,
+        ownerWallet,
+        sessionPublicKey: signerPublicKey,
+      });
+    }
     const signedTransactionBase64 = await request.signer.signTransaction(
       prepared.transaction_base64,
     );
@@ -690,7 +1750,7 @@ export class StrataPlatformClient {
 
   private async requireCapability(
     capabilityId: string,
-    risk: "prepare" | "submit",
+    risk: "prepare" | "submit" | "destructive",
     transport: "http" | "websocket" = "http",
   ): Promise<PlatformDiscoveryResponse> {
     const discovery = await this.readDiscovery(false);
@@ -775,8 +1835,120 @@ export class StrataPlatformClient {
   }
 }
 
+/**
+ * `account_sequence` only when the caller pinned one; an omitted sequence stays
+ * omitted on the wire so Strata resolves it from the Vault's confirmed market
+ * account.
+ */
+function optionalAccountSequence(
+  value: string | bigint | undefined,
+): { readonly account_sequence?: string } {
+  return value === undefined
+    ? {}
+    : { account_sequence: checkedAtomic(value, "accountSequence", true) };
+}
+
+/** The wire body of one order-control operation (challenge or direct prepare). */
+function orderOperationWire(request: PlatformOrderChallengeInput): Record<string, unknown> {
+  const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
+  const sessionPublicKey = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+  if (ownerWallet === sessionPublicKey) {
+    throw new TypeError("sessionPublicKey must be distinct from ownerWallet");
+  }
+  if (request.action === "place") {
+    return {
+      action: "place",
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+      ...orderPlaceWire(request),
+    };
+  }
+  if (request.action === "cancel") {
+    return {
+      action: "cancel",
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+      order_id: checkedOrderId(request.orderId),
+    };
+  }
+  if (request.action === "cancel_all") {
+    return {
+      action: "cancel_all",
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+    };
+  }
+  if (request.action === "replace") {
+    return {
+      action: "replace",
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+      order_id: checkedOrderId(request.orderId),
+      ...orderPlaceWire(request),
+    };
+  }
+  if (request.action === "batch") {
+    if (request.operations.length < 1 || request.operations.length > 6) {
+      throw new TypeError("order batch must contain between one and six operations");
+    }
+    return {
+      action: "batch",
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+      operations: request.operations.map((operation) => {
+        if (operation.action === "place") {
+          return { action: "place", ...orderPlaceWire(operation) };
+        }
+        if (operation.action === "cancel") {
+          return { action: "cancel", order_id: checkedOrderId(operation.orderId) };
+        }
+        return {
+          action: "replace",
+          order_id: checkedOrderId(operation.orderId),
+          ...orderPlaceWire(operation),
+        };
+      }),
+    };
+  }
+  throw new TypeError("order action is invalid");
+}
+
+/** The wire body of one TWAP action (challenge or direct prepare). */
+function twapOperationWire(request: PlatformTwapChallengeInput): Record<string, unknown> {
+  const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
+  const sessionPublicKey = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+  if (ownerWallet === sessionPublicKey) {
+    throw new TypeError("sessionPublicKey must be distinct from ownerWallet");
+  }
+  if (request.action === "place") {
+    if (request.side !== "buy" && request.side !== "sell") {
+      throw new TypeError("side must be buy or sell");
+    }
+    checkedInteger(request.slicesTotal, "slicesTotal", 2, 120);
+    checkedInteger(request.maximumToleranceBps, "maximumToleranceBps", 1, 1_000);
+    checkedInteger(request.intervalSlots, "intervalSlots", 25, 4_500);
+    return {
+      action: "place",
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+      side: request.side,
+      total_size_atoms: checkedAtomic(request.totalSizeAtoms, "totalSizeAtoms", false),
+      slices_total: request.slicesTotal,
+      maximum_tolerance_bps: request.maximumToleranceBps,
+      interval_slots: request.intervalSlots,
+      limit_price_atoms: checkedAtomic(request.limitPriceAtoms, "limitPriceAtoms", false),
+    };
+  }
+  return {
+    action: "cancel",
+    owner_wallet: ownerWallet,
+    session_public_key: sessionPublicKey,
+    twap_id: checkedTwapId(request.twapId),
+  };
+}
+
 function orderPlaceWire(operation: {
-  readonly accountSequence: string | bigint;
+  readonly accountSequence?: string | bigint;
   readonly clientOrderId: string;
   readonly side: string;
   readonly orderType: string;
@@ -790,7 +1962,7 @@ function orderPlaceWire(operation: {
     throw new TypeError("resting orderType must be good_until_cancelled or post_only");
   }
   return {
-    account_sequence: checkedAtomic(operation.accountSequence, "accountSequence", true),
+    ...optionalAccountSequence(operation.accountSequence),
     client_order_id: checkedOpaqueInput(operation.clientOrderId, "clientOrderId"),
     side: operation.side,
     order_type: operation.orderType,
@@ -799,12 +1971,29 @@ function orderPlaceWire(operation: {
   };
 }
 
+/** A maker identity is a wallet address or a signer whose public key names it. */
+function makerWalletAddress(maker: PlatformMakerIdentity): string {
+  if (typeof maker === "string") return canonicalPublicKey(maker, "walletAddress");
+  if (!maker || typeof maker !== "object" || typeof maker.publicKey !== "string") {
+    throw new TypeError("maker must be a wallet address or a signer with publicKey");
+  }
+  return canonicalPublicKey(maker.publicKey, "maker.publicKey");
+}
+
 function checkedMarketId(value: string): string {
   const marketId = value.trim();
   if (!/^market_[0-9a-f]{32}$/.test(marketId)) {
     throw new TypeError("marketId must be an opaque Strata market ID");
   }
   return marketId;
+}
+
+function checkedAssetId(value: string, field: string): string {
+  const assetId = value.trim();
+  if (!/^asset_[0-9a-f]{32}$/.test(assetId)) {
+    throw new TypeError(`${field} must be an opaque Strata asset ID`);
+  }
+  return assetId;
 }
 
 function checkedAtomic(
@@ -835,10 +2024,30 @@ function checkedOrderId(value: string): string {
   return orderId;
 }
 
+function checkedTwapId(value: string): string {
+  const twapId = value.trim();
+  if (!/^twap_[0-9a-f]{32}$/.test(twapId)) {
+    throw new TypeError("twapId must be an opaque Strata TWAP ID");
+  }
+  return twapId;
+}
+
+function checkedInteger(
+  value: number,
+  field: string,
+  minimum: number,
+  maximum: number,
+): number {
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new TypeError(`${field} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return value;
+}
+
 function checkedHandle(
   value: string,
   field: string,
-  prefix: "oc_" | "or_",
+  prefix: "oc_" | "or_" | "twc_" | "twctl_" | "vp_",
 ): string {
   const handle = value.trim();
   if (!new RegExp(`^${prefix}[0-9a-f]{32}$`).test(handle)) {
@@ -853,6 +2062,44 @@ function checkedBase58Signature(value: string, field: string): string {
     throw new TypeError(`${field} must be a canonical base58 Ed25519 signature`);
   }
   return signature;
+}
+
+function checkedHexSignature(value: string, field: string): string {
+  const signature = value.trim().replace(/^0x/i, "").toLowerCase();
+  if (!/^[0-9a-f]{128}$/.test(signature)) {
+    throw new TypeError(`${field} must be a 64-byte hexadecimal Ed25519 signature`);
+  }
+  return signature;
+}
+
+function checkedBugMessage(value: string): string {
+  const message = value.trim();
+  const length = [...message].length;
+  if (length < 1 || length > 2_000) {
+    throw new TypeError("bug message must contain between 1 and 2000 characters");
+  }
+  return message;
+}
+
+export function bugAuthorizationPayload(message: string): Uint8Array {
+  return new TextEncoder().encode(`strata-bug-report:v1:${checkedBugMessage(message)}`);
+}
+
+function checkedReferralCode(value: string): string {
+  const code = value.trim();
+  if (code.length < 1 || code.length > 64 || !/^[A-Za-z0-9_-]+$/.test(code)) {
+    throw new TypeError("referralCode must contain 1-64 letters, numbers, underscores, or dashes");
+  }
+  return code;
+}
+
+export function referralLinkAuthorizationPayload(referralCode: string): Uint8Array {
+  return new TextEncoder().encode(`strata-referral:v1:${checkedReferralCode(referralCode)}`);
+}
+
+export function referralClaimAuthorizationPayload(payoutWalletAddress: string): Uint8Array {
+  const payout = canonicalPublicKey(payoutWalletAddress, "payoutWalletAddress");
+  return new TextEncoder().encode(`strata-referral-claim:v1:${payout}`);
 }
 
 function assertMarket(actual: string, expected: string): void {
@@ -898,6 +2145,36 @@ function checkedAccountSigner(signer: PlatformAccountSigner): PlatformAccountSig
   }
   if (publicKey === signer.publicKey) return signer;
   return { publicKey, signMessage: (message) => signer.signMessage(message) };
+}
+
+export function makerStatusAuthMessage(
+  marketId: string,
+  walletAddress: string,
+  authorizationTimeMs: number,
+): Uint8Array {
+  const market = checkedMarketId(marketId);
+  const wallet = canonicalPublicKey(walletAddress, "walletAddress");
+  if (!Number.isSafeInteger(authorizationTimeMs) || authorizationTimeMs < 0) {
+    throw new TypeError("authorizationTimeMs must be a non-negative safe integer");
+  }
+  return new TextEncoder().encode(
+    `strata:mm-status-read:v2\n${market}\n${wallet}\n${authorizationTimeMs}`,
+  );
+}
+
+export function makerReputationAuthMessage(
+  marketId: string,
+  walletAddress: string,
+  authorizationTimeMs: number,
+): Uint8Array {
+  const market = checkedMarketId(marketId);
+  const wallet = canonicalPublicKey(walletAddress, "walletAddress");
+  if (!Number.isSafeInteger(authorizationTimeMs) || authorizationTimeMs < 0) {
+    throw new TypeError("authorizationTimeMs must be a non-negative safe integer");
+  }
+  return new TextEncoder().encode(
+    `strata:mm-reputation-read:v2\n${market}\n${wallet}\n${authorizationTimeMs}`,
+  );
 }
 
 function pageQuery(request: PageRequest): string {
@@ -980,7 +2257,7 @@ export async function validateOrderAuthorization(
   }
   const derivedOrderIds: string[] = [];
   if (operation.action === "place") {
-    expectU64Value(bytes, cursor, operation.accountSequence, "order account sequence");
+    expectAccountSequence(bytes, cursor, operation.accountSequence);
     cursor += 8;
     const clientLength = readU16(bytes, cursor, "client order ID length");
     cursor += 2;
@@ -1105,12 +2382,97 @@ export async function validateOrderAuthorization(
   return bytes;
 }
 
+export async function validateTwapAuthorization(
+  challenge: PlatformTwapChallengeResponse,
+  operation: PlatformTwapExecuteOperation,
+  sessionPublicKey: string,
+): Promise<Uint8Array> {
+  const bytes = decodeBase64(challenge.authorization_payload_base64);
+  const domain = new TextEncoder().encode("strata-twap-control:v1\0");
+  let cursor = 0;
+  expectBytes(bytes, cursor, domain, "TWAP authorization domain");
+  cursor += domain.length;
+  cursor += 64; // Canonical program and market identities stay behind the opaque market ID.
+  const ownerWallet = canonicalPublicKey(operation.ownerWallet, "ownerWallet");
+  expectBytes(
+    bytes,
+    cursor,
+    base58Decode(ownerWallet, 32, "ownerWallet"),
+    "TWAP authorization owner",
+  );
+  cursor += 32;
+  expectBytes(
+    bytes,
+    cursor,
+    base58Decode(sessionPublicKey, 32, "sessionPublicKey"),
+    "TWAP authorization session",
+  );
+  cursor += 32;
+  const action = readByte(bytes, cursor, "TWAP authorization action");
+  cursor += 1;
+  if (action !== (operation.action === "place" ? 0 : 1)
+      || challenge.action !== operation.action) {
+    throw new StrataContractError("TWAP authorization action changed");
+  }
+  let publicId: string;
+  if (operation.action === "place") {
+    const side = readByte(bytes, cursor, "TWAP side");
+    cursor += 1;
+    if (side !== (operation.side === "buy" ? 0 : 1)) {
+      throw new StrataContractError("TWAP side changed");
+    }
+    expectU64Value(bytes, cursor, operation.totalSizeAtoms, "TWAP total size");
+    cursor += 8;
+    if (readU16(bytes, cursor, "TWAP slices") !== operation.slicesTotal) {
+      throw new StrataContractError("TWAP slices changed");
+    }
+    cursor += 2;
+    if (readU16(bytes, cursor, "TWAP tolerance") !== operation.maximumToleranceBps) {
+      throw new StrataContractError("TWAP tolerance changed");
+    }
+    cursor += 2;
+    if (readU32(bytes, cursor, "TWAP interval") !== operation.intervalSlots) {
+      throw new StrataContractError("TWAP interval changed");
+    }
+    cursor += 4;
+    expectU64Value(bytes, cursor, operation.limitPriceAtoms, "TWAP limit price");
+    cursor += 8;
+    cursor += 8; // Server-selected collision-resistant schedule nonce.
+    const pda = take(bytes, cursor, 32, "TWAP identity");
+    cursor += 32;
+    publicId = await opaqueProductId("twap", base58Encode(pda));
+  } else {
+    const pda = take(bytes, cursor, 32, "TWAP identity");
+    cursor += 32;
+    publicId = await opaqueProductId("twap", base58Encode(pda));
+    if (publicId !== checkedTwapId(operation.twapId)) {
+      throw new StrataContractError("TWAP cancellation identity changed");
+    }
+  }
+  if (publicId !== challenge.twap_id) {
+    throw new StrataContractError("TWAP authorization opaque identity changed");
+  }
+  cursor += 32; // Recent blockhash, checked again by the transaction verifier.
+  cursor += 8; // Last valid block height.
+  expectU64Value(bytes, cursor, String(challenge.expires_at_ms), "TWAP authorization expiry");
+  cursor += 8;
+  const nonce = take(bytes, cursor, 16, "TWAP authorization nonce");
+  cursor += 16;
+  if (hexBytes(nonce) !== challenge.challenge_id.slice(4)) {
+    throw new StrataContractError("TWAP challenge nonce changed");
+  }
+  if (cursor !== bytes.length) {
+    throw new StrataContractError("TWAP authorization contains unrecognized fields");
+  }
+  return bytes;
+}
+
 async function validatePlaceBinding(
   bytes: Uint8Array,
   start: number,
   marketId: string,
   operation: {
-    readonly accountSequence: string | bigint;
+    readonly accountSequence?: string | bigint;
     readonly clientOrderId: string;
     readonly side: string;
     readonly orderType: string;
@@ -1120,7 +2482,7 @@ async function validatePlaceBinding(
 ): Promise<{ readonly cursor: number; readonly orderId: string }> {
   const encoder = new TextEncoder();
   let cursor = start;
-  expectU64Value(bytes, cursor, operation.accountSequence, "order account sequence");
+  expectAccountSequence(bytes, cursor, operation.accountSequence);
   cursor += 8;
   const clientLength = readU16(bytes, cursor, "client order ID length");
   cursor += 2;
@@ -1202,6 +2564,11 @@ function readU16(source: Uint8Array, offset: number, field: string): number {
   return new DataView(source.buffer, source.byteOffset + offset, 2).getUint16(0, true);
 }
 
+function readU32(source: Uint8Array, offset: number, field: string): number {
+  take(source, offset, 4, field);
+  return new DataView(source.buffer, source.byteOffset + offset, 4).getUint32(0, true);
+}
+
 function readU64Value(source: Uint8Array, offset: number, field: string): bigint {
   take(source, offset, 8, field);
   return new DataView(source.buffer, source.byteOffset + offset, 8).getBigUint64(0, true);
@@ -1218,13 +2585,30 @@ function expectU64Value(
   }
 }
 
+/**
+ * A pinned account sequence must match the signed authorization exactly. A
+ * sequence left to Strata is accepted from it (the server resolved it from the
+ * Vault's confirmed market account); every other binding is still checked.
+ */
+function expectAccountSequence(
+  source: Uint8Array,
+  offset: number,
+  expected: string | bigint | undefined,
+): bigint {
+  const actual = readU64Value(source, offset, "order account sequence");
+  if (expected !== undefined && actual !== BigInt(expected)) {
+    throw new StrataContractError("order account sequence changed");
+  }
+  return actual;
+}
+
 function hexBytes(value: Uint8Array): string {
   return Array.from(value, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function opaqueProductId(kind: "order", value: string): Promise<string> {
+async function opaqueProductId(kind: "order" | "twap", value: string): Promise<string> {
   if (!globalThis.crypto?.subtle) {
-    throw new StrataContractError("Web Crypto is required to verify opaque order identity");
+    throw new StrataContractError("Web Crypto is required to verify opaque product identity");
   }
   const prefix = new TextEncoder().encode(`strata-sdk-product:v1\0${kind}\0${value}`);
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", prefix));

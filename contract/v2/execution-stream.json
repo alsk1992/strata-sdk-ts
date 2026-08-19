@@ -1,0 +1,30 @@
+{
+  "type": "executions_snapshot",
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "market_id": "market_33333333333333333333333333333333",
+  "stream_id": "execution_stream_77777777777777777777777777777777",
+  "sequence": "1",
+  "server_time_ms": 1786550400000,
+  "executions": [
+    {
+      "execution_id": "se_0123456789abcdef0123456789abcdef",
+      "market_id": "market_33333333333333333333333333333333",
+      "status": "confirmed",
+      "signature": "1111111111111111111111111111111111111111111111111111111111111111",
+      "settlement": "confirmed",
+      "updated_at_ms": 1786550400000
+    },
+    {
+      "execution_id": "se_fedcba9876543210fedcba9876543210",
+      "market_id": "market_33333333333333333333333333333333",
+      "status": "prepared",
+      "signature": null,
+      "settlement": "pending",
+      "updated_at_ms": 1786550399000
+    }
+  ],
+  "unknown_execution_ids": [
+    "se_00000000000000000000000000000000"
+  ]
+}

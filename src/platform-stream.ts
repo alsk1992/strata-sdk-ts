@@ -179,12 +179,22 @@ export function subscribePlatformMarketData(
         socket?.close(4002, "invalid frame");
       }
     };
-    socket.onerror = () => report(new Error("Strata market stream transport failed"));
-    socket.onclose = () => {
+    let closeHandled = false;
+    const handleClose = () => {
+      if (closeHandled) return;
+      closeHandled = true;
       if (watchdog !== undefined) clearTimeout(watchdog);
       watchdog = undefined;
       book = undefined;
       scheduleReconnect();
+    };
+    socket.onclose = () => handleClose();
+    socket.onerror = () => {
+      report(new Error("Strata market stream transport failed"));
+      // Node's WebSocket emits only `error` (never `close`) when the
+      // handshake is rejected; treat a socket that never opened as closed
+      // so readiness settles and reconnect logic still runs.
+      if (socket?.readyState === 0) handleClose();
     };
   };
 

@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "server_time_ms": 1786896000000,
+  "season": "Genesis",
+  "total_wallets": 2,
+  "owner": {
+    "wallet_address": "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+    "rank": 1,
+    "points": "900000",
+    "trading_points": "500000",
+    "making_points": "300000",
+    "bug_points": "100000",
+    "referral_points": "0"
+  },
+  "standings": [
+    {
+      "rank": 1,
+      "wallet_address": "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+      "points": "900000"
+    },
+    {
+      "rank": 2,
+      "wallet_address": "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
+      "points": "600000"
+    }
+  ]
+}

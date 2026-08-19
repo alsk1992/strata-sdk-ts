@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "server_time_ms": 1786896000000,
+  "wallet_address": "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+  "enabled": true,
+  "cash_rewards_enabled": false,
+  "referral_code": "STRATA1",
+  "referred_wallets": 2,
+  "referral_points": "12000",
+  "referred_by": null,
+  "referral_locked": false,
+  "cash_accrued_atoms": "0",
+  "cash_paid_atoms": "0",
+  "cash_claimable_atoms": "0"
+}

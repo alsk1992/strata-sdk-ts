@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "market_id": "market_33333333333333333333333333333333",
+  "server_time_ms": 1786550400000,
+  "resolution_seconds": 300,
+  "candles": [
+    {
+      "started_at_ms": 1786549800000,
+      "open_price": "149.95",
+      "high_price": "150.1",
+      "low_price": "149.9",
+      "close_price": "150"
+    },
+    {
+      "started_at_ms": 1786550100000,
+      "open_price": "150",
+      "high_price": "150.05",
+      "low_price": "149.98",
+      "close_price": "149.995"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "market_id": "market_33333333333333333333333333333333",
+  "server_time_ms": 1786550400000,
+  "price_atoms_per_base_unit": "149995000",
+  "quote_decimals": 6,
+  "stale": false,
+  "age_ms": 125
+}
