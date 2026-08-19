@@ -1,0 +1,70 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "wallet_address": "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+  "server_time_ms": 1786896000000,
+  "observed_at_ms": 1786895999500,
+  "observed_slot": "372000000",
+  "market_count": 1,
+  "balances": [
+    {
+      "asset_id": "asset_11111111111111111111111111111111",
+      "available_atoms": "1500000000",
+      "locked_atoms": "600000000",
+      "total_atoms": "2100000000",
+      "value_usd_micros": "314989500"
+    },
+    {
+      "asset_id": "asset_22222222222222222222222222222222",
+      "available_atoms": "100000000",
+      "locked_atoms": "25000000",
+      "total_atoms": "125000000",
+      "value_usd_micros": "125000000"
+    }
+  ],
+  "positions": [
+    {
+      "market_id": "market_33333333333333333333333333333333",
+      "base_asset_id": "asset_11111111111111111111111111111111",
+      "quote_asset_id": "asset_22222222222222222222222222222222",
+      "base_available_atoms": "1000000000",
+      "base_locked_atoms": "600000000",
+      "quote_available_atoms": "100000000",
+      "quote_locked_atoms": "25000000"
+    }
+  ],
+  "open_orders": [
+    {
+      "market_id": "market_33333333333333333333333333333333",
+      "order_id": "order_0123456789abcdef0123456789abcdef",
+      "side": "buy",
+      "order_type": "post_only",
+      "state": "partially_filled",
+      "limit_price_atoms": "150000000",
+      "original_size_atoms": "1000000000",
+      "remaining_size_atoms": "600000000"
+    }
+  ],
+  "recent_fills": [
+    {
+      "market_id": "market_33333333333333333333333333333333",
+      "fill_id": "fill_0123456789abcdef0123456789abcdef",
+      "side": "buy",
+      "price_atoms": "150000000",
+      "size_atoms": "400000000",
+      "fee_quote_atoms": "6000",
+      "fee_is_final": true,
+      "settlement": "confirmed",
+      "executed_at_ms": 1786895990000,
+      "confirmed_at_ms": 1786895991000,
+      "transaction_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "realized_pnl_quote_atoms": "0"
+    }
+  ],
+  "unavailable_market_ids": [],
+  "equity_usd_micros": "439989500",
+  "available_usd_micros": "324992500",
+  "locked_usd_micros": "114997000",
+  "valuation_complete": true,
+  "unpriced_asset_ids": []
+}

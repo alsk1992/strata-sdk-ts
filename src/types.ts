@@ -2,7 +2,13 @@ export const CONTRACT_SCHEMA_VERSION = 1 as const;
 export const CONTRACT_VERSION = "1.1" as const;
 export const DEFAULT_API_BASE = "https://api.stratabook.app";
 /** Exact-output default for the current read-only quote surface. */
-export const DEFAULT_SLIPPAGE_BPS = 0 as const;
+/**
+ * Default maximum tolerance: zero, so a quote is exact unless the caller opts
+ * into a lower floor. Tolerance is the caller's choice; it is not price impact.
+ */
+export const DEFAULT_MAXIMUM_TOLERANCE_BPS = 0 as const;
+/** @deprecated Legacy name for DEFAULT_MAXIMUM_TOLERANCE_BPS. */
+export const DEFAULT_SLIPPAGE_BPS = DEFAULT_MAXIMUM_TOLERANCE_BPS;
 
 export type QuoteSide = "buy" | "sell";
 export type CapabilityStability = "internal" | "beta" | "stable";
@@ -95,8 +101,26 @@ export interface QuoteRequest {
   /** Human label such as SOL/USDC, or the public market ID. */
   market: string;
   side: QuoteSide;
-  amountInAtoms: AtomicString | bigint;
-  /** Optional maximum execution tolerance. Omission means exact output (0 bps). */
+  /**
+   * Exact-input quote: spend exactly this many input atoms. Provide exactly one
+   * of `amountInAtoms` and `amountOutAtoms`.
+   */
+  amountInAtoms?: AtomicString | bigint;
+  /**
+   * Exact-output quote: the output atoms you want. Strata inverts its best
+   * route at quote time and returns the input that delivers it as
+   * `amount_in_atoms` (no cushion of its own); `minimum_output_atoms` is this
+   * amount lowered by `maximumToleranceBps` exactly as for exact input — zero
+   * by default, so execution delivers the requested amount or fails closed.
+   */
+  amountOutAtoms?: AtomicString | bigint;
+  /**
+   * The most you accept below the quoted output, in basis points. This is
+   * your choice and has nothing to do with the measured `price_impact_pct`
+   * the response reports. Omission means the quoted output exactly (0 bps).
+   */
+  maximumToleranceBps?: number;
+  /** @deprecated Legacy name for `maximumToleranceBps`. */
   slippageBps?: number;
 }
 
@@ -116,10 +140,21 @@ export interface QuoteResponse {
   minimum_output_atoms: AtomicString;
   /** Fee charged in the input token, when applicable. */
   input_fee_atoms: AtomicString;
-  /** Strata fee charged in the output token. Gross route output is
+  /** Strata fee charged in the output token. Gross pre-fee output is
    * amount_out_atoms + output_fee_atoms. */
   output_fee_atoms: AtomicString;
+  /**
+   * Your tolerance echoed back: the most you accept below `amount_out_atoms`,
+   * already applied in `minimum_output_atoms`. A choice, not a measurement —
+   * compare `price_impact_pct`.
+   */
+  maximum_tolerance_bps: number;
+  /** Best price before your order (display only). */
   reference_price: string;
+  /**
+   * Measured from the book: how far the quoted fills' average price sits from
+   * `reference_price`. Not a setting; unrelated to `maximum_tolerance_bps`.
+   */
   price_impact_pct: string;
   provider: "Sonar";
 }
@@ -144,7 +179,12 @@ export interface ExecutionChallengeRequest {
   quoteId: string;
   ownerWallet: string;
   sessionPublicKey: string;
-  accountSequence: AtomicString | bigint;
+  /**
+   * Vault market account sequence. Omit it and Strata resolves the next
+   * sequence from the Vault's confirmed market account when the challenge is
+   * issued; supply it to pin a sequence tracked locally.
+   */
+  accountSequence?: AtomicString | bigint;
 }
 
 export interface ExecutionPrepareResponse {
@@ -162,12 +202,27 @@ export interface ExecutionPrepareResponse {
   expires_at_ms: number;
 }
 
-export interface ExecutionPrepareRequest {
-  /** The same market used to create the challenge. */
-  market: string;
-  challengeId: string;
-  authorizationSignature: string;
-}
+/**
+ * Prepare a quote-bound execution transaction. Either hand back a signed
+ * challenge (two signatures per trade) or bind the quote directly (one
+ * signature: the session's signature over the returned transaction is the
+ * whole authorization). The response is identical.
+ */
+export type ExecutionPrepareRequest =
+  | {
+      /** The same market used to create the challenge. */
+      market: string;
+      challengeId: string;
+      authorizationSignature: string;
+    }
+  | {
+      /** Human label such as SOL/USDC, or the public market ID. */
+      market: string;
+      quoteId: string;
+      ownerWallet: string;
+      sessionPublicKey: string;
+      accountSequence?: AtomicString | bigint;
+    };
 
 export interface ExecutionSubmitResponse {
   schema_version: typeof CONTRACT_SCHEMA_VERSION;
@@ -187,7 +242,8 @@ export interface ExecutionSubmitRequest {
 
 export interface ExecutionVerificationContext {
   quote: QuoteResponse;
-  challenge: ExecutionChallengeResponse;
+  /** Present only on the two-step (challenge) path. */
+  challenge?: ExecutionChallengeResponse;
   prepared: ExecutionPrepareResponse;
   ownerWallet: string;
   sessionPublicKey: string;
@@ -209,13 +265,17 @@ export interface StrataSessionSigner {
 export interface ExecuteQuoteRequest {
   quote: QuoteResponse;
   ownerWallet: string;
-  accountSequence: AtomicString | bigint;
+  /** Optional pinned Vault market account sequence; see ExecutionChallengeRequest. */
+  accountSequence?: AtomicString | bigint;
   signer: StrataSessionSigner;
   /**
-   * Mandatory deny-by-default transaction verifier. It must reject any
-   * transaction that is not acceptable for this exact Vault session.
+   * Optional deny-by-default transaction verifier. When omitted the SDK's
+   * built-in `verifyExecutionTransaction` runs: the session key co-signs only
+   * Vault-delegated instructions and never pays, the owner wallet is not
+   * asked to sign, and the echoed quote economics are checked. Supply your own
+   * to enforce a stricter policy.
    */
-  verifyTransaction(
+  verifyTransaction?(
     context: ExecutionVerificationContext,
   ): void | Promise<void>;
   /**

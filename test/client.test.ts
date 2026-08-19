@@ -42,10 +42,12 @@ test("reads shared fixtures and binds a quote to its request", async () => {
     market: "sol/usdc",
     side: "sell",
     amountInAtoms: 10_000_000n,
+    maximumToleranceBps: 50,
   });
 
   assert.equal(response.quote_id, "sq_0123456789abcdef0123456789abcdef");
   assert.equal(response.amount_out_atoms, "1990000");
+  assert.equal(response.maximum_tolerance_bps, 50);
   const quoteRequest = requests.at(-1);
   assert.equal(quoteRequest?.url.pathname, "/sonar/markets/sol-usdc/quote");
   assert.equal(quoteRequest?.init?.method, "POST");
@@ -53,8 +55,79 @@ test("reads shared fixtures and binds a quote to its request", async () => {
     market_id: "11111111111111111111111111111111",
     side: "sell",
     amount_in_atoms: "10000000",
-    slippage_bps: 0,
+    maximum_tolerance_bps: 50,
   });
+
+  // A quote echoing a different tolerance than requested is foreign.
+  await assert.rejects(
+    client.quote({ market: "sol/usdc", side: "sell", amountInAtoms: 10_000_000n }),
+    /quote binding does not match the request/,
+  );
+});
+
+test("exact-output quotes send only the output amount and bind to the requested floor", async () => {
+  const markets = await fixture("markets");
+  const quote = await fixture("quote");
+  const exactOutput = {
+    ...quote,
+    side: "buy",
+    amount_in_atoms: "199800000",
+    amount_in_consumed_atoms: "199800000",
+    amount_out_atoms: "1000000004",
+    minimum_output_atoms: "997500000",
+    maximum_tolerance_bps: 25,
+  };
+  const bodies: Array<Record<string, unknown>> = [];
+  const fetch = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (url.pathname === "/sonar/markets") return Response.json(markets);
+    bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return Response.json(exactOutput);
+  };
+  const client = new StrataClient({ apiBase: "https://example.test", fetch });
+  const response = await client.quote({
+    market: "SOL/USDC",
+    side: "buy",
+    amountOutAtoms: 1_000_000_000n,
+    maximumToleranceBps: 25,
+  });
+  assert.equal(response.amount_in_atoms, "199800000");
+  assert.equal(response.minimum_output_atoms, "997500000");
+  assert.deepEqual(bodies[0], {
+    market_id: "11111111111111111111111111111111",
+    side: "buy",
+    amount_out_atoms: "1000000000",
+    maximum_tolerance_bps: 25,
+  });
+
+  // The floor must be the requested amount lowered by exactly the requested
+  // tolerance; anything else is a foreign quote (here: zero tolerance would
+  // require a floor of 1000000000).
+  await assert.rejects(
+    client.quote({ market: "SOL/USDC", side: "buy", amountOutAtoms: 1_000_000_000n }),
+    /quote binding does not match the request/,
+  );
+  // Exactly one amount, and it must be positive.
+  await assert.rejects(
+    client.quote({ market: "SOL/USDC", side: "buy" }),
+    /exactly one of amountInAtoms or amountOutAtoms/,
+  );
+  await assert.rejects(
+    client.quote({
+      market: "SOL/USDC",
+      side: "buy",
+      amountInAtoms: 1n,
+      amountOutAtoms: 1n,
+    }),
+    /exactly one of amountInAtoms or amountOutAtoms/,
+  );
+  await assert.rejects(
+    client.quote({ market: "SOL/USDC", side: "buy", amountOutAtoms: 0n }),
+    /amountOutAtoms must be greater than zero/,
+  );
 });
 
 test("discovers the executable action graph and its external authority boundary", async () => {
@@ -129,6 +202,19 @@ test("exposes challenge, prepare, and submit as separately signable primitives",
   );
   assert.equal(requests.find((request) => request.path.endsWith("/challenge"))?.body?.account_sequence, "7");
   assert.equal(requests.find((request) => request.path.endsWith("/submit"))?.body?.idempotency_key, preparedExecution.execution_id);
+
+  // Omitting the account sequence leaves it out of the wire request so Strata
+  // resolves it from the Vault's confirmed market account.
+  requests.length = 0;
+  await client.executionChallenge({
+    market: "SOL/USDC",
+    quoteId: "sq_0123456789abcdef0123456789abcdef",
+    ownerWallet: owner,
+    sessionPublicKey: owner,
+  });
+  const resolvedChallenge = requests.find((request) => request.path.endsWith("/challenge"))?.body;
+  assert.ok(resolvedChallenge);
+  assert.equal("account_sequence" in resolvedChallenge, false);
 });
 
 test("passes an explicit execution tolerance unchanged", async () => {
@@ -150,10 +236,29 @@ test("passes an explicit execution tolerance unchanged", async () => {
     market: "SOL/USDC",
     side: "sell",
     amountInAtoms: "10000000",
-    slippageBps: 25,
+    maximumToleranceBps: 50,
   });
+  assert.equal(quoteBody?.maximum_tolerance_bps, 50);
+  assert.equal("slippage_bps" in (quoteBody ?? {}), false);
 
-  assert.equal(quoteBody?.slippage_bps, 25);
+  // The legacy name still works and lands on the canonical wire field.
+  await client.quote({
+    market: "SOL/USDC",
+    side: "sell",
+    amountInAtoms: "10000000",
+    slippageBps: 50,
+  });
+  assert.equal(quoteBody?.maximum_tolerance_bps, 50);
+  await assert.rejects(
+    client.quote({
+      market: "SOL/USDC",
+      side: "sell",
+      amountInAtoms: "10000000",
+      maximumToleranceBps: 50,
+      slippageBps: 50,
+    }),
+    /use maximumToleranceBps/,
+  );
 });
 
 test("fails closed when a quote gains an unreviewed field", async () => {
@@ -268,8 +373,11 @@ test("binds execution to minimum output and verifies before session signing", as
     if (path.endsWith("/execution/challenge")) return Response.json(challenge);
     if (path.endsWith("/execution/prepare")) {
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      assert.equal(body.challenge_id, challengeId);
-      assert.equal(typeof body.authorization_signature, "string");
+      // One signature: the quote binding itself is prepared, no challenge.
+      assert.equal(body.quote_id, quoteId);
+      assert.equal(body.owner_wallet, owner);
+      assert.equal(body.account_sequence, "7");
+      assert.equal("challenge_id" in body, false);
       return Response.json(prepared);
     }
     if (path.endsWith("/execution/submit")) return Response.json(submitted);
@@ -281,7 +389,7 @@ test("binds execution to minimum output and verifies before session signing", as
     ownerWallet: owner,
     accountSequence: 7n,
     signer: {
-      publicKey: owner,
+      publicKey: "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
       async signMessage(message) {
         calls.push("authorization");
         assert.deepEqual(Array.from(message), Array.from(payload));
@@ -294,12 +402,16 @@ test("binds execution to minimum output and verifies before session signing", as
     },
     async verifyTransaction(context) {
       calls.push("verify");
+      assert.equal(context.challenge, undefined);
       assert.equal(context.prepared.minimum_output_atoms, quote.minimum_output_atoms);
     },
   });
 
   assert.equal(result.status, "submitted");
-  assert.deepEqual(calls, ["authorization", "verify", "transaction"]);
+  // The session signs only the transaction; no authorization message.
+  assert.deepEqual(calls, ["verify", "transaction"]);
+  // The two-step payload validator remains available to challenge integrators.
+  assert.ok(challenge.authorization_payload_base64.length > 0);
 });
 
 function u64(value: string): Buffer {

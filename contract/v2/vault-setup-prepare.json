@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "server_time_ms": 1786896000000,
+  "wallet_address": "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+  "session_public_key": "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
+  "market_id": "market_33333333333333333333333333333333",
+  "mode": "create",
+  "expires_at_ms": null,
+  "permanent": true,
+  "minimum_interval_seconds": 1,
+  "maximum_tolerance_bps": 100,
+  "spending_limits": [
+    {
+      "asset_id": "asset_0123456789abcdef0123456789abcdef",
+      "maximum_per_execution_atoms": null
+    },
+    {
+      "asset_id": "asset_fedcba9876543210fedcba9876543210",
+      "maximum_per_execution_atoms": "100000000"
+    }
+  ],
+  "transaction_base64": "AQIDBA==",
+  "recent_blockhash": "11111111111111111111111111111111",
+  "owner_signature_required": true,
+  "preparation_id": "vp_1a2b3c4d5e6f708192a3b4c5d6e7f809",
+  "sponsored": true,
+  "submit_by_ms": 1786896090000
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "server_time_ms": 1786896000000,
+  "wallet_address": "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+  "session_public_key": "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
+  "action": "revoke",
+  "transaction_base64": "AQIDBA==",
+  "recent_blockhash": "11111111111111111111111111111111",
+  "owner_signature_required": true,
+  "preparation_id": "vp_2b3c4d5e6f708192a3b4c5d6e7f8091a",
+  "sponsored": true,
+  "submit_by_ms": 1786896090000
+}

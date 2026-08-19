@@ -1,71 +1,95 @@
 import { StrataContractError } from "./client.js";
-import { platformAccountEvent } from "./platform-validation.js";
+import { platformMakerEvent } from "./platform-validation.js";
 import type {
-  PlatformAccountFill,
   PlatformAccountSigner,
-  PlatformAccountView,
   PlatformEntityId,
+  PlatformMakerFill,
+  PlatformMakerStatusResponse,
+  PlatformMakerView,
 } from "./platform.js";
 
 const MIN_RECONNECT_MS = 250;
 const MAX_RECONNECT_MS = 5_000;
 const HEARTBEAT_TIMEOUT_MS = 30_000;
 
-export interface PlatformAccountHandlers {
-  readonly onAccount?: (account: PlatformAccountView) => void;
-  readonly onFill?: (marketId: PlatformEntityId, fill: PlatformAccountFill) => void;
+export interface PlatformMakerHandlers {
+  /** Full owner view after every sequenced event (snapshot, fill, status change). */
+  readonly onMaker?: (view: PlatformMakerView) => void;
+  readonly onFill?: (marketId: PlatformEntityId, fill: PlatformMakerFill) => void;
+  /** The owner's products/exposure changed (an intent, Strand, Current, order, or guard). */
+  readonly onStatus?: (marketId: PlatformEntityId, status: PlatformMakerStatusResponse) => void;
   readonly onError?: (error: Error, marketId?: PlatformEntityId) => void;
 }
 
-export interface PlatformAccountSubscriptionOptions {
+export interface PlatformMakerSubscriptionOptions {
   readonly signal?: AbortSignal;
   readonly webSocketFactory?: (url: string) => WebSocket;
   readonly reconnect?: boolean;
 }
 
-export interface PlatformAccountSubscription {
+export interface PlatformMakerSubscription {
   readonly ready: Promise<void>;
   close(): void;
 }
 
-interface MutableAccount {
+interface MutableMaker {
   marketId: string;
   walletAddress: string;
   streamId: string;
   sequence: string;
-  orders: PlatformAccountView["orders"];
-  fills: Map<string, PlatformAccountFill>;
+  status: PlatformMakerStatusResponse;
+  fills: Map<string, PlatformMakerFill>;
 }
 
-export function subscribePlatformAccount(
+/** The maker to stream: a wallet address (public), or a signer whose public key names it. */
+export type PlatformMakerIdentity = string | PlatformAccountSigner;
+
+/**
+ * Open the maker stream for one market — a maker's own products, exposure,
+ * health, and fills, public by wallet address like every other read. Pass the
+ * wallet address; a signer is accepted too (its public key names the maker and
+ * the server's challenge is answered with a signature, which older servers
+ * required). The SDK fails closed on any identity or sequence mismatch and
+ * recovers from a fresh snapshot.
+ */
+export function subscribePlatformMaker(
   apiBase: string,
-  marketIds: readonly string[],
-  signer: PlatformAccountSigner,
-  handlers: PlatformAccountHandlers,
-  options: PlatformAccountSubscriptionOptions = {},
-): PlatformAccountSubscription {
-  if (!signer || typeof signer !== "object" || typeof signer.signMessage !== "function") {
-    throw new TypeError("account signer must provide publicKey and signMessage");
+  marketId: string,
+  maker: PlatformMakerIdentity,
+  handlers: PlatformMakerHandlers,
+  options: PlatformMakerSubscriptionOptions = {},
+): PlatformMakerSubscription {
+  const identity = makerIdentity(maker);
+  return subscribeMarket(apiBase, accountMarketId(marketId), identity, handlers, options);
+}
+
+interface ResolvedMakerIdentity {
+  readonly publicKey: string;
+  readonly signMessage?: (message: Uint8Array) => Promise<Uint8Array>;
+}
+
+function makerIdentity(maker: PlatformMakerIdentity): ResolvedMakerIdentity {
+  if (typeof maker === "string") {
+    return { publicKey: accountWalletAddress(maker) };
   }
-  accountWalletAddress(signer.publicKey);
-  const uniqueMarkets = [...new Set(marketIds.map(accountMarketId))];
-  if (uniqueMarkets.length === 0) throw new TypeError("at least one marketId is required");
-  const connections = uniqueMarkets.map((marketId) =>
-    subscribeMarket(apiBase, marketId, signer, handlers, options));
-  const ready = Promise.all(connections.map((connection) => connection.ready)).then(() => undefined);
-  const close = () => connections.forEach((connection) => connection.close());
-  void ready.catch(() => close());
-  if (options.signal?.aborted) close();
-  return { ready, close };
+  if (!maker || typeof maker !== "object" || typeof maker.publicKey !== "string") {
+    throw new TypeError("maker must be a wallet address or a signer with publicKey");
+  }
+  return {
+    publicKey: accountWalletAddress(maker.publicKey),
+    ...(typeof maker.signMessage === "function"
+      ? { signMessage: (message: Uint8Array) => maker.signMessage(message) }
+      : {}),
+  };
 }
 
 function subscribeMarket(
   apiBase: string,
   marketId: string,
-  signer: PlatformAccountSigner,
-  handlers: PlatformAccountHandlers,
-  options: PlatformAccountSubscriptionOptions,
-): PlatformAccountSubscription {
+  signer: ResolvedMakerIdentity,
+  handlers: PlatformMakerHandlers,
+  options: PlatformMakerSubscriptionOptions,
+): PlatformMakerSubscription {
   const factory = options.webSocketFactory ?? defaultWebSocketFactory;
   const reconnect = options.reconnect ?? true;
   let socket: WebSocket | undefined;
@@ -73,7 +97,7 @@ function subscribeMarket(
   let reconnectDelay = MIN_RECONNECT_MS;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
-  let account: MutableAccount | undefined;
+  let maker: MutableMaker | undefined;
   let receivedSnapshot = false;
   let readySettled = false;
   let terminalError: Error | undefined;
@@ -92,7 +116,7 @@ function subscribeMarket(
 
   const report = (error: unknown) => {
     handlers.onError?.(
-      error instanceof Error ? error : new Error("Strata account stream failed"),
+      error instanceof Error ? error : new Error("Strata maker stream failed"),
       marketId,
     );
   };
@@ -100,21 +124,21 @@ function subscribeMarket(
   const armWatchdog = () => {
     if (watchdog !== undefined) clearTimeout(watchdog);
     watchdog = setTimeout(() => {
-      report(new Error("Strata account stream heartbeat timed out"));
+      report(new Error("Strata maker stream heartbeat timed out"));
       socket?.close(4000, "heartbeat timeout");
     }, HEARTBEAT_TIMEOUT_MS);
   };
 
-  const emitAccount = (serverTimeMs: number, recovered: boolean) => {
-    if (!account) return;
-    handlers.onAccount?.({
-      market_id: account.marketId,
-      wallet_address: account.walletAddress,
-      stream_id: account.streamId,
-      sequence: account.sequence,
+  const emitMaker = (serverTimeMs: number, recovered: boolean) => {
+    if (!maker) return;
+    handlers.onMaker?.({
+      market_id: maker.marketId,
+      wallet_address: maker.walletAddress,
+      stream_id: maker.streamId,
+      sequence: maker.sequence,
       server_time_ms: serverTimeMs,
-      orders: account.orders,
-      fills: [...account.fills.values()].sort(
+      status: maker.status,
+      fills: [...maker.fills.values()].sort(
         (left, right) => right.executed_at_ms - left.executed_at_ms,
       ),
       recovered,
@@ -123,91 +147,97 @@ function subscribeMarket(
 
   const recover = (reason: string) => {
     report(new StrataContractError(reason));
-    account = undefined;
+    maker = undefined;
     socket?.close(4001, "sequence recovery");
   };
 
   const authenticate = async (challenge: string) => {
     const active = socket;
     try {
-      if (!active) throw new Error("account stream closed before authorization");
-      const signature = await signer.signMessage(accountStreamAuthMessage(
+      if (!active) throw new Error("maker stream closed before authorization");
+      if (!signer.signMessage) {
+        // Public read: open without a signature.
+        active.send(JSON.stringify({ type: "open" }));
+        return;
+      }
+      const signature = await signer.signMessage(makerStreamAuthMessage(
         marketId,
         signer.publicKey,
         challenge,
       ));
       if (!(signature instanceof Uint8Array) || signature.length !== 64) {
-        throw new Error("account signer must return a 64-byte Ed25519 signature");
+        throw new Error("maker signer must return a 64-byte Ed25519 signature");
       }
       if (closed || socket !== active) return;
       active.send(JSON.stringify({ type: "authenticate", signature: bytesToHex(signature) }));
     } catch (error) {
-      terminalError = error instanceof Error ? error : new Error("account authorization failed");
+      terminalError = error instanceof Error ? error : new Error("maker authorization failed");
       report(terminalError);
-      active?.close(4003, "account authorization failed");
+      active?.close(4003, "maker authorization failed");
     }
   };
 
   const apply = (raw: unknown) => {
-    const event = platformAccountEvent(raw);
+    const event = platformMakerEvent(raw);
     if (event.market_id !== marketId || event.wallet_address !== signer.publicKey) {
-      recover("account stream returned different request bindings");
+      recover("maker stream returned different request bindings");
       return;
     }
     if (event.type === "auth_challenge") {
-      if (account) {
-        recover("account stream challenged after state delivery");
+      if (maker) {
+        recover("maker stream challenged after state delivery");
         return;
       }
       void authenticate(event.challenge);
       return;
     }
-    if (event.type === "account_snapshot") {
-      if (account && event.stream_id !== account.streamId) {
-        recover("account stream reset without a new signed challenge");
+    if (event.type === "maker_snapshot") {
+      if (maker && event.stream_id !== maker.streamId) {
+        recover("maker stream reset without a new signed challenge");
         return;
       }
-      if (account && BigInt(event.sequence) <= BigInt(account.sequence)) {
-        recover("account recovery snapshot did not advance its sequence");
+      if (maker && BigInt(event.sequence) <= BigInt(maker.sequence)) {
+        recover("maker recovery snapshot did not advance its sequence");
         return;
       }
       const recovered = receivedSnapshot;
-      account = {
+      maker = {
         marketId: event.market_id,
         walletAddress: event.wallet_address,
         streamId: event.stream_id,
         sequence: event.sequence,
-        orders: event.orders,
+        status: event.status,
         fills: new Map(event.fills.map((fill) => [fill.fill_id, fill])),
       };
       receivedSnapshot = true;
       reconnectDelay = MIN_RECONNECT_MS;
-      emitAccount(event.server_time_ms, recovered);
+      emitMaker(event.server_time_ms, recovered);
       if (!readySettled) {
         readySettled = true;
         resolveReady!();
       }
       return;
     }
-    if (!account || event.stream_id !== account.streamId) {
-      recover("account event arrived without its signed snapshot");
+    if (!maker || event.stream_id !== maker.streamId) {
+      recover("maker event arrived without its signed snapshot");
       return;
     }
-    const expected = BigInt(account.sequence) + 1n;
-    if (event.previous_sequence !== account.sequence || BigInt(event.sequence) !== expected) {
-      recover("account sequence gap detected");
+    const expected = BigInt(maker.sequence) + 1n;
+    if (event.previous_sequence !== maker.sequence || BigInt(event.sequence) !== expected) {
+      recover("maker sequence gap detected");
       return;
     }
-    account.sequence = event.sequence;
+    maker.sequence = event.sequence;
     if (event.type === "heartbeat") return;
-    if (event.type === "orders_snapshot") {
-      account.orders = event.orders;
-      emitAccount(event.server_time_ms, false);
+    if (event.type === "maker_status") {
+      maker.status = event.status;
+      handlers.onStatus?.(event.market_id, event.status);
+      emitMaker(event.server_time_ms, false);
       return;
     }
-    account.fills.set(event.fill.fill_id, event.fill);
+    maker.fills.set(event.fill.fill_id, event.fill);
     handlers.onFill?.(event.market_id, event.fill);
-    emitAccount(event.server_time_ms, false);
+    emitMaker(event.server_time_ms, false);
   };
 
   const scheduleReconnect = () => {
@@ -222,11 +252,11 @@ function subscribeMarket(
   const connect = () => {
     if (closed) return;
     try {
-      socket = factory(accountStreamUrl(apiBase, marketId, signer.publicKey));
+      socket = factory(makerStreamUrl(apiBase, marketId, signer.publicKey));
     } catch (error) {
       report(error);
       if (reconnect) scheduleReconnect();
-      else failReady(error instanceof Error ? error : new Error("account stream failed to open"));
+      else failReady(error instanceof Error ? error : new Error("maker stream failed to open"));
       return;
     }
     socket.onopen = armWatchdog;
@@ -234,7 +264,7 @@ function subscribeMarket(
       armWatchdog();
       try {
         const text = typeof message.data === "string" ? message.data : "";
-        if (!text) throw new Error("account stream sent a non-text frame");
+        if (!text) throw new Error("maker stream sent a non-text frame");
         apply(JSON.parse(text));
       } catch (error) {
         report(error);
@@ -247,28 +277,28 @@ function subscribeMarket(
       closeHandled = true;
       if (watchdog !== undefined) clearTimeout(watchdog);
       watchdog = undefined;
-      account = undefined;
+      maker = undefined;
       if (terminalError) {
         closed = true;
         failReady(terminalError);
         return;
       }
       if (event.code === 4401 || event.code === 4403) {
-        const error = new StrataContractError("account stream authorization was rejected");
+        const error = new StrataContractError("maker stream authorization was rejected");
         report(error);
         closed = true;
         failReady(error);
         return;
       }
       if (!reconnect) {
-        failReady(new Error("account stream closed before its signed snapshot"));
+        failReady(new Error("maker stream closed before its signed snapshot"));
         return;
       }
       scheduleReconnect();
     };
     socket.onclose = (event) => handleClose(event);
     socket.onerror = () => {
-      report(new Error("Strata account stream transport failed"));
+      report(new Error("Strata maker stream transport failed"));
       // Node's WebSocket emits only `error` (never `close`) when the
       // handshake is rejected; treat a socket that never opened as closed
       // so readiness settles and reconnect logic still runs.
@@ -291,26 +321,7 @@ function subscribeMarket(
   return { ready, close };
 }
 
-export function accountHttpAuthMessage(
-  marketId: string,
-  walletAddress: string,
-  timestampMs: number,
-  fillLimit: number,
-): Uint8Array {
-  const market = accountMarketId(marketId);
-  const wallet = accountWalletAddress(walletAddress);
-  if (!Number.isSafeInteger(timestampMs) || timestampMs < 0) {
-    throw new TypeError("timestampMs must be a non-negative safe integer");
-  }
-  if (!Number.isSafeInteger(fillLimit) || fillLimit < 1 || fillLimit > 200) {
-    throw new TypeError("fillLimit must be an integer between 1 and 200");
-  }
-  return new TextEncoder().encode(
-    `strata:account-read:v2\n${market}\n${wallet}\n${timestampMs}\n${fillLimit}`,
-  );
-}
-
-export function accountStreamAuthMessage(
+export function makerStreamAuthMessage(
   marketId: string,
   walletAddress: string,
   challenge: string,
@@ -321,21 +332,21 @@ export function accountStreamAuthMessage(
     throw new TypeError("challenge must be a 32-byte lowercase hexadecimal value");
   }
   return new TextEncoder().encode(
-    `strata:account-stream:v2\n${market}\n${wallet}\n${challenge}`,
+    `strata:mm-fills-stream:v2\n${market}\n${wallet}\n${challenge}`,
   );
 }
 
-export function bytesToHex(value: Uint8Array): string {
+function bytesToHex(value: Uint8Array): string {
   return [...value].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function accountStreamUrl(apiBase: string, marketId: string, walletAddress: string): string {
+function makerStreamUrl(apiBase: string, marketId: string, walletAddress: string): string {
   const url = new URL(apiBase);
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new TypeError("apiBase must use http or https");
   }
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/v2/markets/${marketId}/account/${walletAddress}/stream`;
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}/v2/markets/${marketId}/makers/${walletAddress}/stream`;
   url.search = "";
   url.hash = "";
   return url.toString();

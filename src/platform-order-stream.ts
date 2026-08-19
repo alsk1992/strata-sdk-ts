@@ -6,8 +6,8 @@ import {
   StrataApiError,
   StrataContractError,
 } from "./client.js";
-import { validateOrderAuthorization } from "./platform-client.js";
 import { platformOrderCommandEvents } from "./platform-validation.js";
+import { verifyOrderTransaction } from "./transaction-verifier.js";
 import type {
   PlatformDeadManState,
   PlatformOrderChallengeInput,
@@ -57,14 +57,20 @@ export interface PlatformOrderCommandExecuteInput {
   /** Defaults to cancel_taker, the safest policy for a newly arriving command. */
   readonly selfTradePrevention?: PlatformSelfTradePrevention;
   readonly idempotencyKey?: string;
-  verifyTransaction(context: PlatformOrderVerificationContext): void | Promise<void>;
+  /**
+   * Optional. When omitted the SDK's built-in `verifyOrderTransaction` decodes
+   * the transaction and requires it to be exactly the effective operation
+   * (after self-trade prevention) before the one session signature.
+   */
+  verifyTransaction?(context: PlatformOrderVerificationContext): void | Promise<void>;
 }
 
 export interface PlatformDeadManArmInput {
   /** 1,000–30,000ms; a missed heartbeat submits the exact pre-signed cancel-all. */
   readonly timeoutMs: number;
   readonly idempotencyKey?: string;
-  verifyTransaction(context: PlatformOrderVerificationContext): void | Promise<void>;
+  /** Optional; the built-in verifier checks the pre-signed cancel-all when omitted. */
+  verifyTransaction?(context: PlatformOrderVerificationContext): void | Promise<void>;
 }
 
 export interface PlatformOrderCommandConnection {
@@ -448,33 +454,38 @@ export function connectPlatformOrderCommands(
     verifyTransaction: PlatformOrderCommandExecuteInput["verifyTransaction"],
   ): Promise<{ prepared: PlatformOrderPrepareResponse; signedTransactionBase64: string }> => {
     const effectiveOperation = operationFromWire(challengeResult.effectiveRequest);
-    const authorization = await validateOrderAuthorization(
-      challengeResult.response,
-      effectiveOperation,
-      session,
-    );
-    const signature = await signer.signMessage(authorization);
-    if (!(signature instanceof Uint8Array) || signature.length !== 64) {
-      throw new StrataContractError("order signer must return a 64-byte Ed25519 signature");
-    }
+    // One signature: this socket already authenticated the session and the
+    // challenge is bound to it, so no message signature is needed — the
+    // session signs only the transaction, after it has been verified.
     const prepareEvent = await command<Extract<PlatformOrderCommandEvent, { type: "prepare_result" }>>(
       {
         type: "prepare",
-        request: {
-          challenge_id: challengeResult.response.challenge_id,
-          authorization_signature: base58Encode(signature),
-        },
+        request: { challenge_id: challengeResult.response.challenge_id },
       },
       "prepare_result",
     );
     const prepared = prepareEvent.response;
     assertPreparedBinding(challengeResult.response, prepared);
-    await verifyTransaction({
+    const operation = { ...effectiveOperation, sessionPublicKey: session } as PlatformOrderChallengeInput;
+    const context: PlatformOrderVerificationContext = {
       challenge: challengeResult.response,
+      operation,
+      marketId,
       prepared,
       ownerWallet: owner,
       sessionPublicKey: session,
-    });
+    };
+    if (verifyTransaction) {
+      await verifyTransaction(context);
+    } else {
+      await verifyOrderTransaction({
+        marketId,
+        operation,
+        prepared,
+        ownerWallet: owner,
+        sessionPublicKey: session,
+      });
+    }
     const signedTransactionBase64 = await signer.signTransaction(prepared.transaction_base64);
     decodeBase64(signedTransactionBase64);
     return { prepared, signedTransactionBase64 };
@@ -483,8 +494,8 @@ export function connectPlatformOrderCommands(
   const execute = async (
     input: PlatformOrderCommandExecuteInput,
   ): Promise<PlatformOrderSubmitResponse> => {
-    if (typeof input.verifyTransaction !== "function") {
-      throw new TypeError("verifyTransaction is required");
+    if (input.verifyTransaction !== undefined && typeof input.verifyTransaction !== "function") {
+      throw new TypeError("verifyTransaction must be a function when supplied");
     }
     const challenged = await challenge(input.operation, input.selfTradePrevention);
     const { prepared, signedTransactionBase64 } = await authorizeAndPrepare(
@@ -564,8 +575,8 @@ export function connectPlatformOrderCommands(
         || input.timeoutMs > 30_000) {
       throw new TypeError("dead-man timeoutMs must be an integer between 1000 and 30000");
     }
-    if (typeof input.verifyTransaction !== "function") {
-      throw new TypeError("verifyTransaction is required");
+    if (input.verifyTransaction !== undefined && typeof input.verifyTransaction !== "function") {
+      throw new TypeError("verifyTransaction must be a function when supplied");
     }
     const challenged = await challenge({ action: "cancel_all", ownerWallet: owner });
     const { prepared, signedTransactionBase64 } = await authorizeAndPrepare(
@@ -737,7 +748,7 @@ function operationFromWire(request: PlatformOrderChallengeWire): PlatformOrderEx
 }
 
 function placeWire(operation: {
-  readonly accountSequence: string | bigint;
+  readonly accountSequence?: string | bigint;
   readonly clientOrderId: string;
   readonly side: string;
   readonly orderType: string;
@@ -751,7 +762,11 @@ function placeWire(operation: {
     throw new TypeError("orderType must be good_until_cancelled or post_only");
   }
   return {
-    account_sequence: atomic(operation.accountSequence, "accountSequence", true),
+    // Omitted stays omitted: Strata resolves the next sequence from the
+    // Vault's confirmed market account when the challenge is issued.
+    ...(operation.accountSequence === undefined
+      ? {}
+      : { account_sequence: atomic(operation.accountSequence, "accountSequence", true) }),
     client_order_id: opaqueInput(operation.clientOrderId, "clientOrderId"),
     side: operation.side,
     order_type: operation.orderType,
@@ -761,7 +776,7 @@ function placeWire(operation: {
 }
 
 function placeFromWire(operation: {
-  readonly account_sequence: string;
+  readonly account_sequence?: string;
   readonly client_order_id: string;
   readonly side: "buy" | "sell";
   readonly order_type: "good_until_cancelled" | "post_only";
@@ -769,7 +784,9 @@ function placeFromWire(operation: {
   readonly size_atoms: string;
 }) {
   return {
-    accountSequence: operation.account_sequence,
+    ...(operation.account_sequence === undefined
+      ? {}
+      : { accountSequence: operation.account_sequence }),
     clientOrderId: operation.client_order_id,
     side: operation.side,
     orderType: operation.order_type,

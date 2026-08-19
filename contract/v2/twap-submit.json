@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "twap_control_id": "twctl_44444444444444444444444444444444",
+  "market_id": "market_22222222222222222222222222222222",
+  "action": "place",
+  "twap_id": "twap_33333333333333333333333333333333",
+  "signature": "1111111111111111111111111111111111111111111111111111111111111111",
+  "status": "submitted"
+}

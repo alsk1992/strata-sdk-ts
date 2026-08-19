@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "wallet_address": "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+  "server_time_ms": 1786896000000,
+  "range": "24h",
+  "points": [
+    {
+      "recorded_at_ms": 1786892400000,
+      "equity_usd_micros": "125000000",
+      "available_usd_micros": "100000000",
+      "locked_usd_micros": "25000000",
+      "market_count": 3
+    },
+    {
+      "recorded_at_ms": 1786896000000,
+      "equity_usd_micros": "127500000",
+      "available_usd_micros": "102500000",
+      "locked_usd_micros": "25000000",
+      "market_count": 3
+    }
+  ],
+  "collecting": false,
+  "first_sample_ms": 1786892400000,
+  "last_sample_ms": 1786896000000
+}

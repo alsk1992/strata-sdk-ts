@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "challenge_id": "twc_0123456789abcdef0123456789abcdef",
+  "market_id": "market_22222222222222222222222222222222",
+  "action": "place",
+  "twap_id": "twap_33333333333333333333333333333333",
+  "authorization_payload_base64": "AQ==",
+  "server_time_ms": 1785420000000,
+  "expires_at_ms": 1785420060000
+}

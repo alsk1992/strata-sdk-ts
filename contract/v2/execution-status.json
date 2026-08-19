@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "execution_id": "se_0123456789abcdef0123456789abcdef",
+  "market_id": "market_33333333333333333333333333333333",
+  "status": "confirmed",
+  "signature": "1111111111111111111111111111111111111111111111111111111111111111",
+  "settlement": "confirmed",
+  "updated_at_ms": 1786550400000
+}

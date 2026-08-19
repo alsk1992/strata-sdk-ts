@@ -1,6 +1,7 @@
+import { verifyExecutionTransaction } from "./transaction-verifier.js";
 import {
   DEFAULT_API_BASE,
-  DEFAULT_SLIPPAGE_BPS,
+  DEFAULT_MAXIMUM_TOLERANCE_BPS,
   type ActionGraph,
   type CapabilityCatalog,
   type ExecuteQuoteRequest,
@@ -90,11 +91,24 @@ export class StrataClient {
   }
 
   async quote(request: QuoteRequest): Promise<QuoteResponse> {
-    const amount = normalizeAtoms(request.amountInAtoms);
-    if (BigInt(amount) === 0n) throw new TypeError("amountInAtoms must be greater than zero");
-    const slippage = request.slippageBps ?? DEFAULT_SLIPPAGE_BPS;
-    if (!Number.isSafeInteger(slippage) || slippage < 0 || slippage > 1_000) {
-      throw new TypeError("slippageBps must be an integer between 0 and 1,000");
+    if ((request.amountInAtoms === undefined) === (request.amountOutAtoms === undefined)) {
+      throw new TypeError("provide exactly one of amountInAtoms or amountOutAtoms");
+    }
+    const exactOutput = request.amountOutAtoms !== undefined;
+    const amount = normalizeAtoms(
+      exactOutput ? request.amountOutAtoms! : request.amountInAtoms!,
+    );
+    if (BigInt(amount) === 0n) {
+      throw new TypeError(
+        `${exactOutput ? "amountOutAtoms" : "amountInAtoms"} must be greater than zero`,
+      );
+    }
+    if (request.maximumToleranceBps !== undefined && request.slippageBps !== undefined) {
+      throw new TypeError("use maximumToleranceBps; slippageBps is its legacy name");
+    }
+    const tolerance = request.maximumToleranceBps ?? request.slippageBps ?? DEFAULT_MAXIMUM_TOLERANCE_BPS;
+    if (!Number.isSafeInteger(tolerance) || tolerance < 0 || tolerance > 1_000) {
+      throw new TypeError("maximumToleranceBps must be an integer between 0 and 1,000");
     }
     if (request.side !== "buy" && request.side !== "sell") {
       throw new TypeError("side must be buy or sell");
@@ -119,13 +133,22 @@ export class StrataClient {
     const quote = quoteResponse(await this.post(market.quote_path, {
       market_id: market.market_pda,
       side: request.side,
-      amount_in_atoms: amount,
-      slippage_bps: slippage,
+      // Exactly one amount goes on the wire; an exact-output request omits
+      // `amount_in_atoms` so Strata resolves it.
+      ...(exactOutput ? { amount_out_atoms: amount } : { amount_in_atoms: amount }),
+      maximum_tolerance_bps: tolerance,
     }));
+    // An exact-output quote's floor is the requested amount with the caller's
+    // tolerance applied the same way an exact-input quote applies it.
+    const boundToRequest = exactOutput
+      ? quote.minimum_output_atoms
+        === ((BigInt(amount) * BigInt(10_000 - tolerance)) / 10_000n).toString()
+      : quote.amount_in_atoms === amount;
     if (
       quote.market_id !== market.market_pda
       || quote.side !== request.side
-      || quote.amount_in_atoms !== amount
+      || quote.maximum_tolerance_bps !== tolerance
+      || !boundToRequest
     ) {
       throw new StrataContractError("quote binding does not match the request");
     }
@@ -139,12 +162,16 @@ export class StrataClient {
     const quoteId = normalizeHandle(request.quoteId, "quoteId", "sq_");
     const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
     const sessionPublicKey = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
-    const accountSequence = normalizeAtoms(request.accountSequence);
+    const accountSequence = request.accountSequence === undefined
+      ? undefined
+      : normalizeAtoms(request.accountSequence);
     const challenge = executionChallengeResponse(await this.post(`${executionPath}/challenge`, {
       quote_id: quoteId,
       owner_wallet: ownerWallet,
       session_public_key: sessionPublicKey,
-      account_sequence: accountSequence,
+      // Omitted stays omitted so Strata resolves it from the Vault's
+      // confirmed market account.
+      ...(accountSequence === undefined ? {} : { account_sequence: accountSequence }),
     }));
     if (challenge.quote_id !== quoteId) {
       throw new StrataContractError("execution challenge does not match the requested quote");
@@ -156,16 +183,36 @@ export class StrataClient {
     request: ExecutionPrepareRequest,
   ): Promise<ExecutionPrepareResponse> {
     const executionPath = await this.executionPath(request.market);
-    const challengeId = normalizeHandle(request.challengeId, "challengeId", "sc_");
-    const signature = request.authorizationSignature.trim();
-    const signatureBytes = base58Decode(signature, 64, "authorizationSignature");
-    if (base58Encode(signatureBytes) !== signature) {
-      throw new TypeError("authorizationSignature must be a canonical base58 signature");
+    if ("challengeId" in request) {
+      const challengeId = normalizeHandle(request.challengeId, "challengeId", "sc_");
+      const signature = request.authorizationSignature.trim();
+      const signatureBytes = base58Decode(signature, 64, "authorizationSignature");
+      if (base58Encode(signatureBytes) !== signature) {
+        throw new TypeError("authorizationSignature must be a canonical base58 signature");
+      }
+      return executionPrepareResponse(await this.post(`${executionPath}/prepare`, {
+        challenge_id: challengeId,
+        authorization_signature: signature,
+      }));
     }
-    return executionPrepareResponse(await this.post(`${executionPath}/prepare`, {
-      challenge_id: challengeId,
-      authorization_signature: signature,
+    // Direct: bind the quote and build in one step; the transaction signature
+    // is the authorization.
+    const quoteId = normalizeHandle(request.quoteId, "quoteId", "sq_");
+    const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
+    const sessionPublicKey = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+    const accountSequence = request.accountSequence === undefined
+      ? undefined
+      : normalizeAtoms(request.accountSequence);
+    const prepared = executionPrepareResponse(await this.post(`${executionPath}/prepare`, {
+      quote_id: quoteId,
+      owner_wallet: ownerWallet,
+      session_public_key: sessionPublicKey,
+      ...(accountSequence === undefined ? {} : { account_sequence: accountSequence }),
     }));
+    if (prepared.quote_id !== quoteId) {
+      throw new StrataContractError("prepared execution does not match the requested quote");
+    }
+    return prepared;
   }
 
   async executionSubmit(
@@ -197,8 +244,8 @@ export class StrataClient {
    * agent owner's configured execution policy before it reaches the signer.
    */
   async executeQuote(request: ExecuteQuoteRequest): Promise<ExecutionSubmitResponse> {
-    if (typeof request.verifyTransaction !== "function") {
-      throw new TypeError("verifyTransaction is required");
+    if (request.verifyTransaction !== undefined && typeof request.verifyTransaction !== "function") {
+      throw new TypeError("verifyTransaction must be a function when supplied");
     }
     const quote = quoteResponse(request.quote);
     if (quote.expires_at_ms <= Date.now()) {
@@ -206,53 +253,33 @@ export class StrataClient {
     }
     const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
     const sessionPublicKey = canonicalPublicKey(request.signer.publicKey, "signer.publicKey");
-    if (typeof request.signer.signMessage !== "function") {
-      throw new TypeError("signer.signMessage is required");
-    }
     if (typeof request.signer.signTransaction !== "function") {
       throw new TypeError("signer.signTransaction is required");
     }
-    const accountSequence = normalizeAtoms(request.accountSequence);
-    const challenge = await this.executionChallenge({
+    const accountSequence = request.accountSequence === undefined
+      ? undefined
+      : normalizeAtoms(request.accountSequence);
+    // One signature: the quote is bound and built in one step and the
+    // session signs only the resulting transaction.
+    const prepared = await this.executionPrepare({
       market: quote.market_id,
       quoteId: quote.quote_id,
       ownerWallet,
       sessionPublicKey,
-      accountSequence,
-    });
-    assertExecutionBinding(challenge, quote, "challenge");
-    const authorization = validateAuthorizationPayload(
-      challenge,
-      quote,
-      ownerWallet,
-      sessionPublicKey,
-      accountSequence,
-    );
-    const authorizationSignature = await request.signer.signMessage(authorization.bytes);
-    if (!(authorizationSignature instanceof Uint8Array) || authorizationSignature.length !== 64) {
-      throw new StrataContractError("session authorization signature must contain 64 bytes");
-    }
-    const prepared = await this.executionPrepare({
-      market: quote.market_id,
-      challengeId: challenge.challenge_id,
-      authorizationSignature: base58Encode(authorizationSignature),
+      ...(accountSequence === undefined ? {} : { accountSequence }),
     });
     assertExecutionBinding(prepared, quote, "prepared execution");
-    if (
-      prepared.recent_blockhash !== authorization.recentBlockhash
-      || prepared.last_valid_block_height !== authorization.lastValidBlockHeight
-      || prepared.expires_at_ms > challenge.expires_at_ms
-    ) {
-      throw new StrataContractError("prepared execution changed the signed authorization");
-    }
     const verification = {
       quote,
-      challenge,
       prepared,
       ownerWallet,
       sessionPublicKey,
     };
-    await request.verifyTransaction(verification);
+    if (request.verifyTransaction) {
+      await request.verifyTransaction(verification);
+    } else {
+      verifyExecutionTransaction(verification);
+    }
     const signedTransaction = await request.signer.signTransaction(
       prepared.transaction_base64,
     );
@@ -364,18 +391,23 @@ function assertExecutionBinding(
   }
 }
 
-interface AuthorizationEnvelope {
+export interface AuthorizationEnvelope {
   bytes: Uint8Array;
   recentBlockhash: string;
   lastValidBlockHeight: number;
 }
 
-function validateAuthorizationPayload(
+/**
+ * Two-step path helper: check a challenge's authorization payload binds
+ * exactly this quote, owner, and session before signing it. The one-call
+ * `executeQuote` no longer needs it (one signature over the transaction).
+ */
+export function validateExecutionAuthorizationPayload(
   challenge: ExecutionChallengeResponse,
   quote: QuoteResponse,
   ownerWallet: string,
   sessionPublicKey: string,
-  accountSequence: string,
+  accountSequence: string | undefined,
 ): AuthorizationEnvelope {
   const bytes = decodeBase64(challenge.authorization_payload_base64);
   const domain = new TextEncoder().encode("strata-sonar-execution:v1\0");
@@ -399,7 +431,13 @@ function validateAuthorizationPayload(
   cursor += 8;
   expectU64(bytes, cursor, quote.minimum_output_atoms, "authorization minimum output");
   cursor += 8;
-  expectU64(bytes, cursor, accountSequence, "authorization account sequence");
+  // A pinned sequence must match; one left to Strata is accepted from the
+  // signed authorization (resolved from the Vault's confirmed market account).
+  if (accountSequence === undefined) {
+    readU64(bytes, cursor, "authorization account sequence");
+  } else {
+    expectU64(bytes, cursor, accountSequence, "authorization account sequence");
+  }
   cursor += 8;
   readU64(bytes, cursor, "authorization output balance");
   cursor += 8;
@@ -534,6 +572,12 @@ export function base58Encode(value: Uint8Array): string {
 export function decodeBase64(value: string): Uint8Array {
   if (!validBase64(value)) throw new StrataContractError("invalid base64 payload");
   return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+}
+
+export function encodeBase64(value: Uint8Array): string {
+  let binary = "";
+  for (const byte of value) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 function validBase64(value: string): boolean {

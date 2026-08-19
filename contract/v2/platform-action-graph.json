@@ -1,0 +1,3049 @@
+{
+  "schema_version": 2,
+  "contract_version": "2.0",
+  "graph_version": "2.0",
+  "entry_operation_id": "platform.capabilities.read",
+  "authority": {
+    "permission_source": "external_agent_owner",
+    "signing_location": "external",
+    "accepts_private_keys": false
+  },
+  "entities": [
+    "platform",
+    "asset",
+    "market",
+    "market_state",
+    "book",
+    "quote",
+    "execution_intent",
+    "order",
+    "fill",
+    "settlement",
+    "algo_order",
+    "algo_slice",
+    "owner",
+    "vault",
+    "delegate_session",
+    "policy",
+    "balance",
+    "account",
+    "portfolio_snapshot",
+    "bridge_deposit",
+    "market_maker",
+    "firm_order",
+    "intent",
+    "strand",
+    "current",
+    "signed_quote_session",
+    "reputation",
+    "season",
+    "points",
+    "referral",
+    "bug_report"
+  ],
+  "relations": [
+    {
+      "from": "platform",
+      "to": "asset",
+      "kind": "lists"
+    },
+    {
+      "from": "platform",
+      "to": "market",
+      "kind": "lists"
+    },
+    {
+      "from": "market",
+      "to": "asset",
+      "kind": "base_asset"
+    },
+    {
+      "from": "market",
+      "to": "asset",
+      "kind": "quote_asset"
+    },
+    {
+      "from": "market",
+      "to": "market_state",
+      "kind": "has_state"
+    },
+    {
+      "from": "market",
+      "to": "book",
+      "kind": "has_book"
+    },
+    {
+      "from": "market",
+      "to": "quote",
+      "kind": "prices"
+    },
+    {
+      "from": "quote",
+      "to": "execution_intent",
+      "kind": "authorizes"
+    },
+    {
+      "from": "execution_intent",
+      "to": "order",
+      "kind": "creates"
+    },
+    {
+      "from": "order",
+      "to": "fill",
+      "kind": "produces"
+    },
+    {
+      "from": "fill",
+      "to": "settlement",
+      "kind": "settles_as"
+    },
+    {
+      "from": "algo_order",
+      "to": "algo_slice",
+      "kind": "schedules"
+    },
+    {
+      "from": "algo_slice",
+      "to": "fill",
+      "kind": "produces"
+    },
+    {
+      "from": "owner",
+      "to": "vault",
+      "kind": "owns"
+    },
+    {
+      "from": "vault",
+      "to": "delegate_session",
+      "kind": "authorizes"
+    },
+    {
+      "from": "delegate_session",
+      "to": "policy",
+      "kind": "enforces"
+    },
+    {
+      "from": "vault",
+      "to": "balance",
+      "kind": "holds"
+    },
+    {
+      "from": "owner",
+      "to": "account",
+      "kind": "controls"
+    },
+    {
+      "from": "account",
+      "to": "portfolio_snapshot",
+      "kind": "snapshots"
+    },
+    {
+      "from": "vault",
+      "to": "bridge_deposit",
+      "kind": "receives"
+    },
+    {
+      "from": "market_maker",
+      "to": "firm_order",
+      "kind": "manages"
+    },
+    {
+      "from": "market_maker",
+      "to": "intent",
+      "kind": "manages"
+    },
+    {
+      "from": "market_maker",
+      "to": "strand",
+      "kind": "manages"
+    },
+    {
+      "from": "market_maker",
+      "to": "current",
+      "kind": "manages"
+    },
+    {
+      "from": "market_maker",
+      "to": "signed_quote_session",
+      "kind": "manages"
+    },
+    {
+      "from": "market_maker",
+      "to": "reputation",
+      "kind": "earns"
+    },
+    {
+      "from": "owner",
+      "to": "points",
+      "kind": "earns"
+    },
+    {
+      "from": "season",
+      "to": "points",
+      "kind": "contains"
+    },
+    {
+      "from": "owner",
+      "to": "referral",
+      "kind": "owns"
+    },
+    {
+      "from": "owner",
+      "to": "bug_report",
+      "kind": "submits"
+    }
+  ],
+  "modules": [
+    {
+      "id": "discovery",
+      "client_property": "discovery",
+      "capability_ids": [
+        "platform.discover",
+        "platform.status.read",
+        "graphs.read"
+      ]
+    },
+    {
+      "id": "assets",
+      "client_property": "assets",
+      "capability_ids": [
+        "assets.read"
+      ]
+    },
+    {
+      "id": "markets",
+      "client_property": "markets",
+      "capability_ids": [
+        "markets.read",
+        "markets.status.read",
+        "fees.read"
+      ]
+    },
+    {
+      "id": "market_data",
+      "client_property": "marketData",
+      "capability_ids": [
+        "market_data.book.snapshot",
+        "market_data.book.stream",
+        "market_data.bbo.stream",
+        "market_data.trades.read",
+        "market_data.trades.stream",
+        "market_data.candles.read",
+        "market_data.marks.read"
+      ]
+    },
+    {
+      "id": "quotes",
+      "client_property": "quotes",
+      "capability_ids": [
+        "quotes.market.read",
+        "quotes.swap.read",
+        "quotes.exact_output.read"
+      ]
+    },
+    {
+      "id": "execution",
+      "client_property": "execution",
+      "capability_ids": [
+        "execution.prepare",
+        "execution.submit",
+        "execution.status.read",
+        "execution.stream"
+      ]
+    },
+    {
+      "id": "orders",
+      "client_property": "orders",
+      "capability_ids": [
+        "orders.prepare",
+        "orders.submit",
+        "orders.replace",
+        "orders.batch",
+        "orders.read",
+        "orders.stream"
+      ]
+    },
+    {
+      "id": "algos",
+      "client_property": "algos",
+      "capability_ids": [
+        "algos.twap.place",
+        "algos.twap.cancel",
+        "algos.twap.read",
+        "algos.twap.stream"
+      ]
+    },
+    {
+      "id": "account",
+      "client_property": "account",
+      "capability_ids": [
+        "account.read",
+        "account.stream",
+        "portfolio.read",
+        "portfolio.history.read"
+      ]
+    },
+    {
+      "id": "vault",
+      "client_property": "vault",
+      "capability_ids": [
+        "vault.status.read",
+        "vault.setup",
+        "vault.deposit",
+        "vault.withdraw",
+        "vault.delegate.manage",
+        "vault.policy.manage",
+        "vault.pause",
+        "vault.relay"
+      ]
+    },
+    {
+      "id": "bridge",
+      "client_property": "bridge",
+      "capability_ids": [
+        "bridge.networks.read",
+        "bridge.quote.read",
+        "bridge.deposit",
+        "bridge.resume",
+        "bridge.status.read"
+      ]
+    },
+    {
+      "id": "market_making",
+      "client_property": "marketMaking",
+      "capability_ids": [
+        "mm.status.read",
+        "mm.reputation.read",
+        "mm.fills.stream",
+        "mm.intent.manage",
+        "mm.strand.manage",
+        "mm.current.manage"
+      ]
+    },
+    {
+      "id": "rewards",
+      "client_property": "rewards",
+      "capability_ids": [
+        "rewards.read"
+      ]
+    },
+    {
+      "id": "referrals",
+      "client_property": "referrals",
+      "capability_ids": [
+        "referrals.read",
+        "referrals.link",
+        "referrals.claim"
+      ]
+    },
+    {
+      "id": "bugs",
+      "client_property": "bugs",
+      "capability_ids": [
+        "bugs.submit",
+        "bugs.read"
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "id": "platform.capabilities.read",
+      "capability_id": "platform.discover",
+      "kind": "discovery",
+      "summary": "Read the operations currently available to this client.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/capabilities"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "platform.status.read",
+      "capability_id": "platform.status.read",
+      "kind": "read",
+      "summary": "Read platform availability and current service time.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/status"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_status"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "platform.graph.read",
+      "capability_id": "graphs.read",
+      "kind": "discovery",
+      "summary": "Read the complete customer-safe entity and action graph.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/action-graph"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_platform_graph"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "assets.list",
+      "capability_id": "assets.read",
+      "kind": "read",
+      "summary": "List assets available through Strata.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/assets"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "markets.list",
+      "capability_id": "markets.read",
+      "kind": "read",
+      "summary": "List opaque market identities and available actions.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "markets.status.read",
+      "capability_id": "markets.status.read",
+      "kind": "read",
+      "summary": "Read current market state and order constraints.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/status"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "markets.fees.read",
+      "capability_id": "fees.read",
+      "kind": "read",
+      "summary": "Read the customer fee schedule for a market.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/fees"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_data.book.snapshot",
+      "capability_id": "market_data.book.snapshot",
+      "kind": "read",
+      "summary": "Read a sequenced executable book snapshot.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/book"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_data.book.stream",
+      "capability_id": "market_data.book.stream",
+      "kind": "stream",
+      "summary": "Stream sequenced book snapshots and changes with recovery metadata.",
+      "transports": [
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_data.bbo.stream",
+      "capability_id": "market_data.bbo.stream",
+      "kind": "stream",
+      "summary": "Stream the current best bid and ask.",
+      "transports": [
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_data.trades.read",
+      "capability_id": "market_data.trades.read",
+      "kind": "read",
+      "summary": "Read recent anonymized trades.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/trades"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_data.trades.stream",
+      "capability_id": "market_data.trades.stream",
+      "kind": "stream",
+      "summary": "Stream sequenced anonymized trades.",
+      "transports": [
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_data.candles.read",
+      "capability_id": "market_data.candles.read",
+      "kind": "read",
+      "summary": "Read time-bucketed market candles.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/candles"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_candles"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_data.marks.read",
+      "capability_id": "market_data.marks.read",
+      "kind": "read",
+      "summary": "Read current customer-facing reference prices.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/marks"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/stream"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_marks"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "quotes.market.read",
+      "capability_id": "quotes.market.read",
+      "kind": "read",
+      "summary": "Request exact customer economics for immediate execution.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/sonar/markets/{market}/quote"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_quote"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "quotes.swap.read",
+      "capability_id": "quotes.swap.read",
+      "kind": "read",
+      "summary": "Request exact customer economics for an asset swap.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/quotes"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_swap_quote"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "quotes.exact_output.read",
+      "capability_id": "quotes.exact_output.read",
+      "kind": "read",
+      "summary": "Request the input Strata's best route needs to deliver an exact output amount.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/sonar/markets/{market}/quote"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_exact_output_quote"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "execution.challenge",
+      "capability_id": "execution.prepare",
+      "kind": "prepare",
+      "summary": "Request canonical authorization bytes for an unexpired quote.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/sonar/markets/{market}/execution/challenge"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_execution_challenge"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "execution.prepare",
+      "capability_id": "execution.prepare",
+      "kind": "prepare",
+      "summary": "Prepare a quote-bound transaction from the quote binding itself (one signature: the session signs only the returned transaction) or from a signed challenge.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/sonar/markets/{market}/execution/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_execution_prepare"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "execution.submit",
+      "capability_id": "execution.submit",
+      "kind": "submit",
+      "summary": "Submit an externally signed execution with idempotency.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/sonar/markets/{market}/execution/submit"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_execution_submit"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "execution.status.read",
+      "capability_id": "execution.status.read",
+      "kind": "read",
+      "summary": "Recover durable execution and settlement status.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/executions/{execution_id}"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_execution_status"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "execution.stream",
+      "capability_id": "execution.stream",
+      "kind": "stream",
+      "summary": "Stream execution, fill, and settlement state changes for watched executions in one market.",
+      "transports": [
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/executions/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "orders.challenge",
+      "capability_id": "orders.prepare",
+      "kind": "prepare",
+      "summary": "Request canonical authorization bytes for an order command.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/orders/challenge"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/orders/stream"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_order_challenge"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "orders.prepare",
+      "capability_id": "orders.prepare",
+      "kind": "prepare",
+      "summary": "Prepare an order command from the operation itself (one signature: the session signs only the returned transaction) or from a signed challenge.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/orders/prepare"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/orders/stream"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_order_prepare"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "orders.submit",
+      "capability_id": "orders.submit",
+      "kind": "submit",
+      "summary": "Submit an externally signed order command with idempotency.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/orders/submit"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/orders/stream"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_order_submit"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "orders.replace",
+      "capability_id": "orders.replace",
+      "kind": "submit",
+      "summary": "Atomically replace one owned order using the order command contract.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/orders/challenge"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/orders/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "orders.batch",
+      "capability_id": "orders.batch",
+      "kind": "submit",
+      "summary": "Execute a bounded atomic batch of owned order commands.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/orders/challenge"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/orders/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "orders.read",
+      "capability_id": "orders.read",
+      "kind": "read",
+      "summary": "Read sanitized owned order and fill state.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/account/{wallet_address}"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "orders.stream",
+      "capability_id": "orders.stream",
+      "kind": "stream",
+      "summary": "Stream authenticated owned order and fill state.",
+      "transports": [
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/account/{wallet_address}/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "twap.place.challenge",
+      "capability_id": "algos.twap.place",
+      "kind": "prepare",
+      "summary": "Request canonical authorization bytes for a bounded TWAP schedule.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/twaps/challenge"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_twap_challenge"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "twap.place.prepare",
+      "capability_id": "algos.twap.place",
+      "kind": "prepare",
+      "summary": "Prepare a TWAP schedule from the schedule itself (one signature: the session signs only the returned transaction) or from a signed challenge.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/twaps/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_twap_prepare"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "twap.place.submit",
+      "capability_id": "algos.twap.place",
+      "kind": "submit",
+      "summary": "Submit an externally signed TWAP schedule with idempotency.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/twaps/submit"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_twap_submit"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "twap.cancel.challenge",
+      "capability_id": "algos.twap.cancel",
+      "kind": "prepare",
+      "summary": "Request canonical authorization bytes to cancel one active owned TWAP schedule.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/twaps/challenge"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_twap_cancel"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "twap.cancel.prepare",
+      "capability_id": "algos.twap.cancel",
+      "kind": "prepare",
+      "summary": "Prepare a TWAP cancellation from the cancellation itself (one signature: the session signs only the returned transaction) or from a signed challenge.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/twaps/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_twap_prepare"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "twap.cancel.submit",
+      "capability_id": "algos.twap.cancel",
+      "kind": "submit",
+      "summary": "Submit an externally signed TWAP cancellation with idempotency.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/twaps/submit"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_twap_submit"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "twap.read",
+      "capability_id": "algos.twap.read",
+      "kind": "read",
+      "summary": "Read owned TWAP schedules and progress.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/account/{wallet_address}/twaps"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_twaps"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "twap.stream",
+      "capability_id": "algos.twap.stream",
+      "kind": "stream",
+      "summary": "Stream sequenced TWAP progress and terminal receipts.",
+      "transports": [
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/account/{wallet_address}/twaps/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "account.read",
+      "capability_id": "account.read",
+      "kind": "read",
+      "summary": "Read a signed, sanitized account snapshot.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/account/{wallet_address}"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "account.stream",
+      "capability_id": "account.stream",
+      "kind": "stream",
+      "summary": "Stream signed, sequenced private account state.",
+      "transports": [
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/account/{wallet_address}/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "portfolio.read",
+      "capability_id": "portfolio.read",
+      "kind": "read",
+      "summary": "The whole account in one public read, by wallet address: balances (total / available / locked, exact USD), positions, open orders, and recent fills across every live market.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/account/{wallet_address}/portfolio"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_portfolio"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "portfolio.history.read",
+      "capability_id": "portfolio.history.read",
+      "kind": "read",
+      "summary": "Read bounded stored portfolio history for an owner.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/account/{wallet_address}/portfolio/history"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_portfolio_history"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.status.read",
+      "capability_id": "vault.status.read",
+      "kind": "read",
+      "summary": "Read Vault, delegate, and owner policy state.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/vault/status"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_status"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.setup.prepare",
+      "capability_id": "vault.setup",
+      "kind": "prepare",
+      "summary": "Prepare owner-authorized Vault onboarding or session replacement.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/vault/setup/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_setup"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.deposit.prepare",
+      "capability_id": "vault.deposit",
+      "kind": "prepare",
+      "summary": "Prepare an exact owner-authorized Vault deposit.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/vault/deposits/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_deposit"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.withdraw.prepare",
+      "capability_id": "vault.withdraw",
+      "kind": "prepare",
+      "summary": "Prepare an owner-authorized withdrawal that satisfies destination policy.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/vault/withdrawals/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_withdraw"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.delegate.manage",
+      "capability_id": "vault.delegate.manage",
+      "kind": "prepare",
+      "summary": "Prepare owner-authorized external session revocation.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/vault/delegates/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_delegate"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.policy.manage",
+      "capability_id": "vault.policy.manage",
+      "kind": "prepare",
+      "summary": "Prepare an owner-authorized withdrawal access policy change.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/vault/policies/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_policy"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.pause",
+      "capability_id": "vault.pause",
+      "kind": "prepare",
+      "summary": "Prepare an owner-authorized Vault pause or resume action.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/vault/pause/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_pause"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.relay",
+      "capability_id": "vault.relay",
+      "kind": "submit",
+      "summary": "Submit an owner-signed prepared Vault transaction; Strata pays the fee when sponsored and broadcasts it.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/vault/submit"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_submit"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "vault.relay.status",
+      "capability_id": "vault.relay",
+      "kind": "receipt",
+      "summary": "Read the durable outcome of a submitted Vault transaction.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/vault/submissions/{preparation_id}"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_vault_submission"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "bridge.networks.read",
+      "capability_id": "bridge.networks.read",
+      "kind": "read",
+      "summary": "List supported cross-chain deposit corridors and finality profiles.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/bridge/networks"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_bridge_networks"
+        }
+      ],
+      "available": false
+    },
+    {
+      "id": "bridge.quote.read",
+      "capability_id": "bridge.quote.read",
+      "kind": "read",
+      "summary": "Quote cross-chain deposit fees, amount received, and expected finality.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/bridge/quotes"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_bridge_quote"
+        }
+      ],
+      "available": false
+    },
+    {
+      "id": "bridge.deposit",
+      "capability_id": "bridge.deposit",
+      "kind": "submit",
+      "summary": "Initiate an externally authorized cross-chain Vault deposit.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/bridge/deposits"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_bridge_deposit"
+        }
+      ],
+      "available": false
+    },
+    {
+      "id": "bridge.resume",
+      "capability_id": "bridge.resume",
+      "kind": "submit",
+      "summary": "Resume destination credit without repeating the source debit.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/bridge/deposits/{deposit_id}/resume"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_bridge_resume"
+        }
+      ],
+      "available": false
+    },
+    {
+      "id": "bridge.status.read",
+      "capability_id": "bridge.status.read",
+      "kind": "read",
+      "summary": "Read durable cross-chain debit, attestation, and Vault credit status.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/bridge/deposits/{deposit_id}"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/bridge/deposits/{deposit_id}/stream"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_bridge_status"
+        }
+      ],
+      "available": false
+    },
+    {
+      "id": "market_making.status.read",
+      "capability_id": "mm.status.read",
+      "kind": "read",
+      "summary": "A maker's products, exposure, health, and kill state in one market — public by wallet address.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/makers/{wallet_address}"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_market_making_status"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_making.reputation.read",
+      "capability_id": "mm.reputation.read",
+      "kind": "read",
+      "summary": "A maker's reliability record in one market — public by wallet address.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/markets/{market_id}/makers/{wallet_address}/reputation"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_market_making_reputation"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_making.fills.stream",
+      "capability_id": "mm.fills.stream",
+      "kind": "stream",
+      "summary": "Stream a maker's fills and product changes in one market — public by wallet address.",
+      "transports": [
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/makers/{wallet_address}/stream"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_making.intent.manage",
+      "capability_id": "mm.intent.manage",
+      "kind": "submit",
+      "summary": "Create, update, pause, or revoke the owner's intent liquidity.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/makers/intents"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/makers/{wallet_address}/commands"
+        }
+      ],
+      "available": false
+    },
+    {
+      "id": "market_making.strand.manage",
+      "capability_id": "mm.strand.manage",
+      "kind": "submit",
+      "summary": "Create, recenter, pause, or cancel the owner's Strand liquidity.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/makers/strands"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/makers/{wallet_address}/commands"
+        }
+      ],
+      "available": false
+    },
+    {
+      "id": "market_making.current.manage",
+      "capability_id": "mm.current.manage",
+      "kind": "submit",
+      "summary": "Create, update, pause, or cancel the owner's Current liquidity.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/makers/currents"
+        },
+        {
+          "transport": "websocket",
+          "path": "/v2/markets/{market_id}/makers/{wallet_address}/commands"
+        }
+      ],
+      "available": false
+    },
+    {
+      "id": "rewards.read",
+      "capability_id": "rewards.read",
+      "kind": "read",
+      "summary": "Read seasons, owner rewards, and public standings.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/rewards"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_rewards"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "referrals.read",
+      "capability_id": "referrals.read",
+      "kind": "read",
+      "summary": "Read an owner's referral state and claimable rewards.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/referrals/{wallet_address}"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_referrals"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "referrals.link",
+      "capability_id": "referrals.link",
+      "kind": "submit",
+      "summary": "Link a referral after externally signed owner authorization.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/referrals/link"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_referral_link"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "referrals.claim",
+      "capability_id": "referrals.claim",
+      "kind": "submit",
+      "summary": "Claim referral rewards after externally signed owner authorization.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/referrals/claim"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_referral_claim"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "bugs.submit",
+      "capability_id": "bugs.submit",
+      "kind": "submit",
+      "summary": "Submit a wallet-signed product bug report.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/bugs"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_bug_submit"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "bugs.read",
+      "capability_id": "bugs.read",
+      "kind": "read",
+      "summary": "Read an owner's redacted bug reports and confirmed points.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/bugs/{wallet_address}"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_bugs"
+        }
+      ],
+      "available": true
+    }
+  ],
+  "workflows": [
+    {
+      "id": "platform_discovery",
+      "entry_node": "discover",
+      "nodes": [
+        {
+          "id": "discover",
+          "kind": "discovery",
+          "capability_id": "platform.discover",
+          "operation_ids": [
+            "platform.capabilities.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "service_status",
+          "kind": "read",
+          "capability_id": "platform.status.read",
+          "operation_ids": [
+            "platform.status.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "read_graph",
+          "kind": "discovery",
+          "capability_id": "graphs.read",
+          "operation_ids": [
+            "platform.graph.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "list_assets",
+          "kind": "read",
+          "capability_id": "assets.read",
+          "operation_ids": [
+            "assets.list"
+          ],
+          "available": true
+        },
+        {
+          "id": "list_markets",
+          "kind": "read",
+          "capability_id": "markets.read",
+          "operation_ids": [
+            "markets.list"
+          ],
+          "available": true
+        },
+        {
+          "id": "market_status",
+          "kind": "read",
+          "capability_id": "markets.status.read",
+          "operation_ids": [
+            "markets.status.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "fees",
+          "kind": "read",
+          "capability_id": "fees.read",
+          "operation_ids": [
+            "markets.fees.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "book_snapshot",
+          "kind": "read",
+          "capability_id": "market_data.book.snapshot",
+          "operation_ids": [
+            "market_data.book.snapshot"
+          ],
+          "available": true
+        },
+        {
+          "id": "book_stream",
+          "kind": "stream",
+          "capability_id": "market_data.book.stream",
+          "operation_ids": [
+            "market_data.book.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "bbo_stream",
+          "kind": "stream",
+          "capability_id": "market_data.bbo.stream",
+          "operation_ids": [
+            "market_data.bbo.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "recent_trades",
+          "kind": "read",
+          "capability_id": "market_data.trades.read",
+          "operation_ids": [
+            "market_data.trades.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "trade_stream",
+          "kind": "stream",
+          "capability_id": "market_data.trades.stream",
+          "operation_ids": [
+            "market_data.trades.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "candles",
+          "kind": "read",
+          "capability_id": "market_data.candles.read",
+          "operation_ids": [
+            "market_data.candles.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "marks",
+          "kind": "read",
+          "capability_id": "market_data.marks.read",
+          "operation_ids": [
+            "market_data.marks.read"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "discover",
+          "to": "service_status",
+          "condition": "the agent needs the current service clock and availability"
+        },
+        {
+          "from": "discover",
+          "to": "read_graph",
+          "condition": "the agent is selecting a supported workflow"
+        },
+        {
+          "from": "discover",
+          "to": "list_assets",
+          "condition": "the agent is selecting an opaque asset identity"
+        },
+        {
+          "from": "discover",
+          "to": "list_markets",
+          "condition": "the agent is selecting an opaque market identity"
+        },
+        {
+          "from": "list_markets",
+          "to": "market_status",
+          "condition": "a market is selected"
+        },
+        {
+          "from": "market_status",
+          "to": "fees",
+          "condition": "customer fees are needed"
+        },
+        {
+          "from": "market_status",
+          "to": "book_snapshot",
+          "condition": "a recoverable executable book baseline is needed"
+        },
+        {
+          "from": "book_snapshot",
+          "to": "book_stream",
+          "condition": "continuous depth updates are needed"
+        },
+        {
+          "from": "book_snapshot",
+          "to": "bbo_stream",
+          "condition": "only best-price updates are needed"
+        },
+        {
+          "from": "market_status",
+          "to": "recent_trades",
+          "condition": "recent anonymized executions are needed"
+        },
+        {
+          "from": "recent_trades",
+          "to": "trade_stream",
+          "condition": "continuous anonymized executions are needed"
+        },
+        {
+          "from": "market_status",
+          "to": "candles",
+          "condition": "bounded historical price buckets are needed"
+        },
+        {
+          "from": "market_status",
+          "to": "marks",
+          "condition": "a current customer-facing reference price is needed"
+        }
+      ]
+    },
+    {
+      "id": "immediate_execution",
+      "entry_node": "discover",
+      "nodes": [
+        {
+          "id": "discover",
+          "kind": "discovery",
+          "capability_id": "platform.discover",
+          "operation_ids": [
+            "platform.capabilities.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "select_market",
+          "kind": "read",
+          "capability_id": "markets.read",
+          "operation_ids": [
+            "markets.list"
+          ],
+          "available": true
+        },
+        {
+          "id": "market_status",
+          "kind": "read",
+          "capability_id": "markets.status.read",
+          "operation_ids": [
+            "markets.status.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "request_market_quote",
+          "kind": "read",
+          "capability_id": "quotes.market.read",
+          "operation_ids": [
+            "quotes.market.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "request_swap_quote",
+          "kind": "read",
+          "capability_id": "quotes.swap.read",
+          "operation_ids": [
+            "quotes.swap.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "request_exact_output_quote",
+          "kind": "read",
+          "capability_id": "quotes.exact_output.read",
+          "operation_ids": [
+            "quotes.exact_output.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "request_challenge",
+          "kind": "prepare",
+          "capability_id": "execution.prepare",
+          "operation_ids": [
+            "execution.challenge"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_intent",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "prepare_transaction",
+          "kind": "prepare",
+          "capability_id": "execution.prepare",
+          "operation_ids": [
+            "execution.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_transaction",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "submit",
+          "kind": "submit",
+          "capability_id": "execution.submit",
+          "operation_ids": [
+            "execution.submit"
+          ],
+          "available": true
+        },
+        {
+          "id": "acknowledgement",
+          "kind": "receipt",
+          "capability_id": "execution.status.read",
+          "operation_ids": [
+            "execution.status.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "progress",
+          "kind": "stream",
+          "capability_id": "execution.stream",
+          "operation_ids": [
+            "execution.stream"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "discover",
+          "to": "select_market",
+          "condition": "required capabilities are live"
+        },
+        {
+          "from": "select_market",
+          "to": "market_status",
+          "condition": "the market identity is selected"
+        },
+        {
+          "from": "market_status",
+          "to": "request_market_quote",
+          "condition": "the order is an exact-input market execution"
+        },
+        {
+          "from": "market_status",
+          "to": "request_swap_quote",
+          "condition": "the action is an arbitrary supported asset swap"
+        },
+        {
+          "from": "market_status",
+          "to": "request_exact_output_quote",
+          "condition": "the exact-output capability is live and an output amount is fixed"
+        },
+        {
+          "from": "request_market_quote",
+          "to": "request_challenge",
+          "condition": "economics and expiry are accepted"
+        },
+        {
+          "from": "request_market_quote",
+          "to": "prepare_transaction",
+          "condition": "one signature: the quote binding itself is prepared and the session signs only the returned transaction (the challenge path stays optional)"
+        },
+        {
+          "from": "request_swap_quote",
+          "to": "request_challenge",
+          "condition": "economics and expiry are accepted"
+        },
+        {
+          "from": "request_exact_output_quote",
+          "to": "request_challenge",
+          "condition": "maximum input and expiry are accepted"
+        },
+        {
+          "from": "request_exact_output_quote",
+          "to": "prepare_transaction",
+          "condition": "one signature: the quote binding itself is prepared and the session signs only the returned transaction"
+        },
+        {
+          "from": "request_challenge",
+          "to": "sign_intent",
+          "condition": "the opaque authorization bindings match owner intent"
+        },
+        {
+          "from": "sign_intent",
+          "to": "prepare_transaction",
+          "condition": "the external signer returns a valid detached signature"
+        },
+        {
+          "from": "prepare_transaction",
+          "to": "sign_transaction",
+          "condition": "the prepared transaction is decoded and verified to be exactly the requested operation (built-in verifier, or a stricter owner verifier); on the two-step path it must also preserve the signed bindings"
+        },
+        {
+          "from": "sign_transaction",
+          "to": "submit",
+          "condition": "the external signer fills only its transaction signature slot"
+        },
+        {
+          "from": "submit",
+          "to": "acknowledgement",
+          "condition": "client order identity is accepted"
+        },
+        {
+          "from": "acknowledgement",
+          "to": "progress",
+          "condition": "execution or settlement remains non-terminal"
+        }
+      ]
+    },
+    {
+      "id": "firm_order",
+      "entry_node": "discover",
+      "nodes": [
+        {
+          "id": "discover",
+          "kind": "discovery",
+          "capability_id": "platform.discover",
+          "operation_ids": [
+            "platform.capabilities.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "subscribe_book",
+          "kind": "stream",
+          "capability_id": "market_data.book.stream",
+          "operation_ids": [
+            "market_data.book.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "request_challenge",
+          "kind": "prepare",
+          "capability_id": "orders.prepare",
+          "operation_ids": [
+            "orders.challenge"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_authorization",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "prepare_transaction",
+          "kind": "prepare",
+          "capability_id": "orders.prepare",
+          "operation_ids": [
+            "orders.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_transaction",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "submit",
+          "kind": "submit",
+          "capability_id": "orders.submit",
+          "operation_ids": [
+            "orders.submit"
+          ],
+          "available": true
+        },
+        {
+          "id": "replace",
+          "kind": "submit",
+          "capability_id": "orders.replace",
+          "operation_ids": [
+            "orders.replace"
+          ],
+          "available": true
+        },
+        {
+          "id": "batch",
+          "kind": "submit",
+          "capability_id": "orders.batch",
+          "operation_ids": [
+            "orders.batch"
+          ],
+          "available": true
+        },
+        {
+          "id": "order_update",
+          "kind": "stream",
+          "capability_id": "orders.stream",
+          "operation_ids": [
+            "orders.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "terminal_receipt",
+          "kind": "receipt",
+          "capability_id": "orders.read",
+          "operation_ids": [
+            "orders.read"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "discover",
+          "to": "subscribe_book",
+          "condition": "market data is live"
+        },
+        {
+          "from": "subscribe_book",
+          "to": "request_challenge",
+          "condition": "place, cancel, bounded cancel-all, atomic replace, or bounded batch intent is exact"
+        },
+        {
+          "from": "subscribe_book",
+          "to": "prepare_transaction",
+          "condition": "one signature: the operation itself is prepared and the session signs only the returned transaction (the challenge path stays optional)"
+        },
+        {
+          "from": "request_challenge",
+          "to": "sign_authorization",
+          "condition": "the opaque order bindings match owner intent"
+        },
+        {
+          "from": "sign_authorization",
+          "to": "prepare_transaction",
+          "condition": "external signer returns a valid detached signature"
+        },
+        {
+          "from": "prepare_transaction",
+          "to": "sign_transaction",
+          "condition": "the prepared transaction is decoded and verified to be exactly the requested operation (built-in verifier, or a stricter owner verifier); on the two-step path it must also preserve the signed bindings"
+        },
+        {
+          "from": "sign_transaction",
+          "to": "submit",
+          "condition": "a place, cancel, or bounded cancel-all command is signed"
+        },
+        {
+          "from": "sign_transaction",
+          "to": "replace",
+          "condition": "an atomic replace command is signed"
+        },
+        {
+          "from": "sign_transaction",
+          "to": "batch",
+          "condition": "a bounded atomic batch is signed"
+        },
+        {
+          "from": "submit",
+          "to": "order_update",
+          "condition": "the idempotent submission is acknowledged"
+        },
+        {
+          "from": "replace",
+          "to": "order_update",
+          "condition": "the idempotent replacement is acknowledged"
+        },
+        {
+          "from": "batch",
+          "to": "order_update",
+          "condition": "the idempotent batch is acknowledged"
+        },
+        {
+          "from": "order_update",
+          "to": "request_challenge",
+          "condition": "another place, cancel, bounded cancel-all, atomic replace, or bounded batch action is requested"
+        },
+        {
+          "from": "order_update",
+          "to": "terminal_receipt",
+          "condition": "order reaches a terminal state"
+        },
+        {
+          "from": "submit",
+          "to": "terminal_receipt",
+          "condition": "the submitted cancel reaches a terminal state"
+        }
+      ]
+    },
+    {
+      "id": "twap",
+      "entry_node": "discover",
+      "nodes": [
+        {
+          "id": "discover",
+          "kind": "discovery",
+          "capability_id": "platform.discover",
+          "operation_ids": [
+            "platform.capabilities.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "preview",
+          "kind": "read",
+          "capability_id": "quotes.market.read",
+          "operation_ids": [
+            "quotes.market.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "request_place_challenge",
+          "kind": "prepare",
+          "capability_id": "algos.twap.place",
+          "operation_ids": [
+            "twap.place.challenge"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_schedule",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "prepare_place",
+          "kind": "prepare",
+          "capability_id": "algos.twap.place",
+          "operation_ids": [
+            "twap.place.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_place_transaction",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "place",
+          "kind": "submit",
+          "capability_id": "algos.twap.place",
+          "operation_ids": [
+            "twap.place.submit"
+          ],
+          "available": true
+        },
+        {
+          "id": "progress",
+          "kind": "stream",
+          "capability_id": "algos.twap.stream",
+          "operation_ids": [
+            "twap.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "request_cancel_challenge",
+          "kind": "prepare",
+          "capability_id": "algos.twap.cancel",
+          "operation_ids": [
+            "twap.cancel.challenge"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_cancel",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "prepare_cancel",
+          "kind": "prepare",
+          "capability_id": "algos.twap.cancel",
+          "operation_ids": [
+            "twap.cancel.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_cancel_transaction",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "cancel",
+          "kind": "submit",
+          "capability_id": "algos.twap.cancel",
+          "operation_ids": [
+            "twap.cancel.submit"
+          ],
+          "available": true
+        },
+        {
+          "id": "terminal_receipt",
+          "kind": "receipt",
+          "capability_id": "algos.twap.read",
+          "operation_ids": [
+            "twap.read"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "discover",
+          "to": "preview",
+          "condition": "TWAP is live for the market"
+        },
+        {
+          "from": "preview",
+          "to": "request_place_challenge",
+          "condition": "cadence and bounds are accepted"
+        },
+        {
+          "from": "preview",
+          "to": "prepare_place",
+          "condition": "one signature: the schedule itself is prepared and the session signs only the returned transaction"
+        },
+        {
+          "from": "request_place_challenge",
+          "to": "sign_schedule",
+          "condition": "the opaque schedule bindings match owner intent"
+        },
+        {
+          "from": "sign_schedule",
+          "to": "prepare_place",
+          "condition": "the external signer returns a valid detached signature"
+        },
+        {
+          "from": "prepare_place",
+          "to": "sign_place_transaction",
+          "condition": "the prepared schedule transaction is verified against the requested schedule (built-in verifier or a stricter owner verifier)"
+        },
+        {
+          "from": "sign_place_transaction",
+          "to": "place",
+          "condition": "the external signer fills only its transaction signature slot"
+        },
+        {
+          "from": "place",
+          "to": "progress",
+          "condition": "schedule is accepted"
+        },
+        {
+          "from": "progress",
+          "to": "request_cancel_challenge",
+          "condition": "schedule remains active and cancellation is requested"
+        },
+        {
+          "from": "progress",
+          "to": "prepare_cancel",
+          "condition": "one signature: the cancellation itself is prepared and the session signs only the returned transaction"
+        },
+        {
+          "from": "request_cancel_challenge",
+          "to": "sign_cancel",
+          "condition": "the owned schedule identity and cancellation bounds match"
+        },
+        {
+          "from": "sign_cancel",
+          "to": "prepare_cancel",
+          "condition": "the external signer returns a valid detached signature"
+        },
+        {
+          "from": "prepare_cancel",
+          "to": "sign_cancel_transaction",
+          "condition": "the cancellation transaction is verified against the owned schedule identity (built-in verifier or a stricter owner verifier)"
+        },
+        {
+          "from": "sign_cancel_transaction",
+          "to": "cancel",
+          "condition": "the external signer fills only its transaction signature slot"
+        },
+        {
+          "from": "progress",
+          "to": "terminal_receipt",
+          "condition": "schedule reaches a terminal state"
+        },
+        {
+          "from": "cancel",
+          "to": "terminal_receipt",
+          "condition": "cancellation is confirmed"
+        }
+      ]
+    },
+    {
+      "id": "account_monitoring",
+      "entry_node": "discover",
+      "nodes": [
+        {
+          "id": "discover",
+          "kind": "discovery",
+          "capability_id": "platform.discover",
+          "operation_ids": [
+            "platform.capabilities.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "account_snapshot",
+          "kind": "read",
+          "capability_id": "account.read",
+          "operation_ids": [
+            "account.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "account_stream",
+          "kind": "stream",
+          "capability_id": "account.stream",
+          "operation_ids": [
+            "account.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "portfolio_snapshot",
+          "kind": "read",
+          "capability_id": "portfolio.read",
+          "operation_ids": [
+            "portfolio.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "portfolio_history",
+          "kind": "read",
+          "capability_id": "portfolio.history.read",
+          "operation_ids": [
+            "portfolio.history.read"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "discover",
+          "to": "account_snapshot",
+          "condition": "the owner identity is known and account read is live"
+        },
+        {
+          "from": "account_snapshot",
+          "to": "account_stream",
+          "condition": "continuous private state is needed"
+        },
+        {
+          "from": "account_snapshot",
+          "to": "portfolio_snapshot",
+          "condition": "cross-market balances and totals are needed"
+        },
+        {
+          "from": "portfolio_snapshot",
+          "to": "portfolio_history",
+          "condition": "bounded stored history is needed"
+        }
+      ]
+    },
+    {
+      "id": "vault_configuration",
+      "entry_node": "read_status",
+      "nodes": [
+        {
+          "id": "read_status",
+          "kind": "read",
+          "capability_id": "vault.status.read",
+          "operation_ids": [
+            "vault.status.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "prepare_setup",
+          "kind": "prepare",
+          "capability_id": "vault.setup",
+          "operation_ids": [
+            "vault.setup.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_setup",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "prepare_policy",
+          "kind": "prepare",
+          "capability_id": "vault.policy.manage",
+          "operation_ids": [
+            "vault.policy.manage"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_policy",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "prepare_delegate_revoke",
+          "kind": "prepare",
+          "capability_id": "vault.delegate.manage",
+          "operation_ids": [
+            "vault.delegate.manage"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_delegate_revoke",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "prepare_pause",
+          "kind": "prepare",
+          "capability_id": "vault.pause",
+          "operation_ids": [
+            "vault.pause"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_pause",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "submit",
+          "kind": "submit",
+          "capability_id": "vault.relay",
+          "operation_ids": [
+            "vault.relay"
+          ],
+          "available": true
+        },
+        {
+          "id": "submission",
+          "kind": "receipt",
+          "capability_id": "vault.relay",
+          "operation_ids": [
+            "vault.relay.status"
+          ],
+          "available": true
+        },
+        {
+          "id": "ready",
+          "kind": "receipt",
+          "capability_id": "vault.status.read",
+          "operation_ids": [
+            "vault.status.read"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "read_status",
+          "to": "prepare_setup",
+          "condition": "a session is required and no first deposit will carry it (one signature; only the wallet and the session key are needed)"
+        },
+        {
+          "from": "prepare_setup",
+          "to": "sign_setup",
+          "condition": "the prepared owner action matches the requested session bounds"
+        },
+        {
+          "from": "sign_setup",
+          "to": "submit",
+          "condition": "the owner returns its signature over the exact prepared transaction"
+        },
+        {
+          "from": "read_status",
+          "to": "prepare_policy",
+          "condition": "withdrawal access policy must change"
+        },
+        {
+          "from": "prepare_policy",
+          "to": "sign_policy",
+          "condition": "the exact destination policy matches owner intent"
+        },
+        {
+          "from": "sign_policy",
+          "to": "submit",
+          "condition": "the owner returns its signature over the exact prepared transaction"
+        },
+        {
+          "from": "read_status",
+          "to": "prepare_delegate_revoke",
+          "condition": "an external session must be revoked"
+        },
+        {
+          "from": "prepare_delegate_revoke",
+          "to": "sign_delegate_revoke",
+          "condition": "the exact session identity matches owner intent"
+        },
+        {
+          "from": "sign_delegate_revoke",
+          "to": "submit",
+          "condition": "the owner returns its signature over the exact prepared transaction"
+        },
+        {
+          "from": "read_status",
+          "to": "prepare_pause",
+          "condition": "the owner requests a pause or resume"
+        },
+        {
+          "from": "prepare_pause",
+          "to": "sign_pause",
+          "condition": "the exact safety action matches owner intent"
+        },
+        {
+          "from": "sign_pause",
+          "to": "submit",
+          "condition": "the owner returns its signature over the exact prepared transaction"
+        },
+        {
+          "from": "submit",
+          "to": "submission",
+          "condition": "the submission is acknowledged with a signature"
+        },
+        {
+          "from": "submission",
+          "to": "ready",
+          "condition": "the submission is confirmed"
+        },
+        {
+          "from": "read_status",
+          "to": "ready",
+          "condition": "an acceptable session already exists"
+        }
+      ]
+    },
+    {
+      "id": "vault_funding",
+      "entry_node": "read_status",
+      "nodes": [
+        {
+          "id": "read_status",
+          "kind": "read",
+          "capability_id": "vault.status.read",
+          "operation_ids": [
+            "vault.status.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "prepare_deposit",
+          "kind": "prepare",
+          "capability_id": "vault.deposit",
+          "operation_ids": [
+            "vault.deposit.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "prepare_withdrawal",
+          "kind": "prepare",
+          "capability_id": "vault.withdraw",
+          "operation_ids": [
+            "vault.withdraw.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_funding_transaction",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "relay",
+          "kind": "submit",
+          "capability_id": "vault.relay",
+          "operation_ids": [
+            "vault.relay"
+          ],
+          "available": true
+        },
+        {
+          "id": "submission",
+          "kind": "receipt",
+          "capability_id": "vault.relay",
+          "operation_ids": [
+            "vault.relay.status"
+          ],
+          "available": true
+        },
+        {
+          "id": "receipt",
+          "kind": "receipt",
+          "capability_id": "vault.status.read",
+          "operation_ids": [
+            "vault.status.read"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "read_status",
+          "to": "prepare_deposit",
+          "condition": "the owner requests an exact asset deposit (a first deposit that names the session key also registers it in the same signature)"
+        },
+        {
+          "from": "read_status",
+          "to": "prepare_withdrawal",
+          "condition": "the owner requests an exact policy-compliant withdrawal"
+        },
+        {
+          "from": "prepare_deposit",
+          "to": "sign_funding_transaction",
+          "condition": "asset, amount, owner, and Vault bindings match"
+        },
+        {
+          "from": "prepare_withdrawal",
+          "to": "sign_funding_transaction",
+          "condition": "asset, amount, owner, Vault, and destination bindings match"
+        },
+        {
+          "from": "sign_funding_transaction",
+          "to": "relay",
+          "condition": "the owner returns its signature over the exact prepared transaction"
+        },
+        {
+          "from": "relay",
+          "to": "submission",
+          "condition": "the submission is acknowledged with a signature"
+        },
+        {
+          "from": "submission",
+          "to": "receipt",
+          "condition": "the submission is confirmed"
+        }
+      ]
+    },
+    {
+      "id": "bridge_deposit",
+      "entry_node": "discover_networks",
+      "nodes": [
+        {
+          "id": "discover_networks",
+          "kind": "read",
+          "capability_id": "bridge.networks.read",
+          "operation_ids": [
+            "bridge.networks.read"
+          ],
+          "available": false
+        },
+        {
+          "id": "quote",
+          "kind": "read",
+          "capability_id": "bridge.quote.read",
+          "operation_ids": [
+            "bridge.quote.read"
+          ],
+          "available": false
+        },
+        {
+          "id": "sign_burn",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "deposit",
+          "kind": "submit",
+          "capability_id": "bridge.deposit",
+          "operation_ids": [
+            "bridge.deposit"
+          ],
+          "available": false
+        },
+        {
+          "id": "status",
+          "kind": "read",
+          "capability_id": "bridge.status.read",
+          "operation_ids": [
+            "bridge.status.read"
+          ],
+          "available": false
+        },
+        {
+          "id": "resume",
+          "kind": "submit",
+          "capability_id": "bridge.resume",
+          "operation_ids": [
+            "bridge.resume"
+          ],
+          "available": false
+        },
+        {
+          "id": "receipt",
+          "kind": "receipt",
+          "capability_id": "bridge.status.read",
+          "operation_ids": [
+            "bridge.status.read"
+          ],
+          "available": false
+        }
+      ],
+      "edges": [
+        {
+          "from": "discover_networks",
+          "to": "quote",
+          "condition": "a supported corridor is selected"
+        },
+        {
+          "from": "quote",
+          "to": "sign_burn",
+          "condition": "fees and finality are accepted"
+        },
+        {
+          "from": "sign_burn",
+          "to": "deposit",
+          "condition": "source authorization is available"
+        },
+        {
+          "from": "deposit",
+          "to": "status",
+          "condition": "a durable transfer identity exists"
+        },
+        {
+          "from": "status",
+          "to": "resume",
+          "condition": "destination credit is incomplete and resumable"
+        },
+        {
+          "from": "resume",
+          "to": "status",
+          "condition": "resume is submitted"
+        },
+        {
+          "from": "status",
+          "to": "receipt",
+          "condition": "Vault credit is confirmed"
+        }
+      ]
+    },
+    {
+      "id": "market_making",
+      "entry_node": "read_reputation",
+      "nodes": [
+        {
+          "id": "read_status",
+          "kind": "read",
+          "capability_id": "mm.status.read",
+          "operation_ids": [
+            "market_making.status.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "read_reputation",
+          "kind": "read",
+          "capability_id": "mm.reputation.read",
+          "operation_ids": [
+            "market_making.reputation.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "subscribe_market",
+          "kind": "stream",
+          "capability_id": "market_data.book.stream",
+          "operation_ids": [
+            "market_data.book.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "manage_intent",
+          "kind": "submit",
+          "capability_id": "mm.intent.manage",
+          "operation_ids": [
+            "market_making.intent.manage"
+          ],
+          "available": false
+        },
+        {
+          "id": "manage_strand",
+          "kind": "submit",
+          "capability_id": "mm.strand.manage",
+          "operation_ids": [
+            "market_making.strand.manage"
+          ],
+          "available": false
+        },
+        {
+          "id": "manage_current",
+          "kind": "submit",
+          "capability_id": "mm.current.manage",
+          "operation_ids": [
+            "market_making.current.manage"
+          ],
+          "available": false
+        },
+        {
+          "id": "fill_update",
+          "kind": "stream",
+          "capability_id": "mm.fills.stream",
+          "operation_ids": [
+            "market_making.fills.stream"
+          ],
+          "available": true
+        },
+        {
+          "id": "reconcile",
+          "kind": "read",
+          "capability_id": "mm.status.read",
+          "operation_ids": [
+            "market_making.status.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "disable",
+          "kind": "submit",
+          "capability_id": "mm.intent.manage",
+          "operation_ids": [
+            "market_making.intent.manage"
+          ],
+          "available": false
+        }
+      ],
+      "edges": [
+        {
+          "from": "read_reputation",
+          "to": "read_status",
+          "condition": "maker status is live and the owner needs additional state"
+        },
+        {
+          "from": "read_reputation",
+          "to": "subscribe_market",
+          "condition": "the maker is active, eligible, and market data is live"
+        },
+        {
+          "from": "read_status",
+          "to": "subscribe_market",
+          "condition": "the selected maker capability is live"
+        },
+        {
+          "from": "subscribe_market",
+          "to": "manage_intent",
+          "condition": "owner selects the intent product"
+        },
+        {
+          "from": "subscribe_market",
+          "to": "manage_strand",
+          "condition": "owner selects the strand product"
+        },
+        {
+          "from": "subscribe_market",
+          "to": "manage_current",
+          "condition": "owner selects the current product"
+        },
+        {
+          "from": "manage_intent",
+          "to": "fill_update",
+          "condition": "maker product is active"
+        },
+        {
+          "from": "manage_strand",
+          "to": "fill_update",
+          "condition": "maker product is active"
+        },
+        {
+          "from": "manage_current",
+          "to": "fill_update",
+          "condition": "maker product is active"
+        },
+        {
+          "from": "fill_update",
+          "to": "reconcile",
+          "condition": "state changes or the connection recovers"
+        },
+        {
+          "from": "reconcile",
+          "to": "subscribe_market",
+          "condition": "maker remains active"
+        },
+        {
+          "from": "reconcile",
+          "to": "disable",
+          "condition": "owner policy or health requires a stop"
+        }
+      ]
+    },
+    {
+      "id": "platform_participation",
+      "entry_node": "read_rewards",
+      "nodes": [
+        {
+          "id": "read_rewards",
+          "kind": "read",
+          "capability_id": "rewards.read",
+          "operation_ids": [
+            "rewards.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "read_referrals",
+          "kind": "read",
+          "capability_id": "referrals.read",
+          "operation_ids": [
+            "referrals.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_link",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "link",
+          "kind": "submit",
+          "capability_id": "referrals.link",
+          "operation_ids": [
+            "referrals.link"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_claim",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "claim",
+          "kind": "submit",
+          "capability_id": "referrals.claim",
+          "operation_ids": [
+            "referrals.claim"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "read_rewards",
+          "to": "read_referrals",
+          "condition": "the owner wants referral state or claimable rewards"
+        },
+        {
+          "from": "read_referrals",
+          "to": "sign_link",
+          "condition": "the owner requests an eligible referral link"
+        },
+        {
+          "from": "sign_link",
+          "to": "link",
+          "condition": "the external signer authorizes the exact referral relationship"
+        },
+        {
+          "from": "link",
+          "to": "read_referrals",
+          "condition": "the link submission is acknowledged"
+        },
+        {
+          "from": "read_referrals",
+          "to": "sign_claim",
+          "condition": "claimable referral rewards exist"
+        },
+        {
+          "from": "sign_claim",
+          "to": "claim",
+          "condition": "the external signer authorizes the exact claim"
+        },
+        {
+          "from": "claim",
+          "to": "read_referrals",
+          "condition": "the claim submission is acknowledged"
+        }
+      ]
+    },
+    {
+      "id": "bug_reporting",
+      "entry_node": "read_reports",
+      "nodes": [
+        {
+          "id": "read_reports",
+          "kind": "read",
+          "capability_id": "bugs.read",
+          "operation_ids": [
+            "bugs.read"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_report",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "submit_report",
+          "kind": "submit",
+          "capability_id": "bugs.submit",
+          "operation_ids": [
+            "bugs.submit"
+          ],
+          "available": true
+        },
+        {
+          "id": "receipt",
+          "kind": "receipt",
+          "capability_id": "bugs.read",
+          "operation_ids": [
+            "bugs.read"
+          ],
+          "available": true
+        }
+      ],
+      "edges": [
+        {
+          "from": "read_reports",
+          "to": "sign_report",
+          "condition": "the owner wants to submit a bounded product bug report"
+        },
+        {
+          "from": "sign_report",
+          "to": "submit_report",
+          "condition": "the wallet signature binds the exact redacted report"
+        },
+        {
+          "from": "submit_report",
+          "to": "receipt",
+          "condition": "the report is accepted"
+        }
+      ]
+    }
+  ]
+}
