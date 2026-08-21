@@ -1353,40 +1353,76 @@
       "available": false
     },
     {
-      "id": "market_making.strand.manage",
+      "id": "market_making.strand.prepare",
       "capability_id": "mm.strand.manage",
-      "kind": "submit",
-      "summary": "Create, recenter, pause, or cancel the owner's Strand liquidity.",
+      "kind": "prepare",
+      "summary": "Prepare an exact maker-signed Strand upsert, recenter, enable, pause, or cancel transaction.",
       "transports": [
         {
           "transport": "http",
           "method": "POST",
-          "path": "/v2/markets/{market_id}/makers/strands"
+          "path": "/v2/markets/{market_id}/makers/strands/prepare"
         },
         {
-          "transport": "websocket",
-          "path": "/v2/markets/{market_id}/makers/{wallet_address}/commands"
+          "transport": "mcp",
+          "tool": "strata_market_making_strand_prepare"
         }
       ],
-      "available": false
+      "available": true
     },
     {
-      "id": "market_making.current.manage",
-      "capability_id": "mm.current.manage",
+      "id": "market_making.strand.submit",
+      "capability_id": "mm.strand.manage",
       "kind": "submit",
-      "summary": "Create, update, pause, or cancel the owner's Current liquidity.",
+      "summary": "Submit the exact externally maker-signed Strand transaction idempotently.",
       "transports": [
         {
           "transport": "http",
           "method": "POST",
-          "path": "/v2/markets/{market_id}/makers/currents"
+          "path": "/v2/markets/{market_id}/makers/strands/submit"
         },
         {
-          "transport": "websocket",
-          "path": "/v2/markets/{market_id}/makers/{wallet_address}/commands"
+          "transport": "mcp",
+          "tool": "strata_market_making_strand_submit"
         }
       ],
-      "available": false
+      "available": true
+    },
+    {
+      "id": "market_making.current.prepare",
+      "capability_id": "mm.current.manage",
+      "kind": "prepare",
+      "summary": "Prepare an exact maker-signed Current upsert or cancel transaction, failing closed when an upsert lacks a verified market reference.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/makers/currents/prepare"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_market_making_current_prepare"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "market_making.current.submit",
+      "capability_id": "mm.current.manage",
+      "kind": "submit",
+      "summary": "Submit the exact externally maker-signed Current transaction idempotently.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/makers/currents/submit"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_market_making_current_submit"
+        }
+      ],
+      "available": true
     },
     {
       "id": "rewards.read",
@@ -2787,22 +2823,54 @@
           "available": false
         },
         {
-          "id": "manage_strand",
+          "id": "prepare_strand",
+          "kind": "prepare",
+          "capability_id": "mm.strand.manage",
+          "operation_ids": [
+            "market_making.strand.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_strand",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "submit_strand",
           "kind": "submit",
           "capability_id": "mm.strand.manage",
           "operation_ids": [
-            "market_making.strand.manage"
+            "market_making.strand.submit"
           ],
-          "available": false
+          "available": true
         },
         {
-          "id": "manage_current",
+          "id": "prepare_current",
+          "kind": "prepare",
+          "capability_id": "mm.current.manage",
+          "operation_ids": [
+            "market_making.current.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_current",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "submit_current",
           "kind": "submit",
           "capability_id": "mm.current.manage",
           "operation_ids": [
-            "market_making.current.manage"
+            "market_making.current.submit"
           ],
-          "available": false
+          "available": true
         },
         {
           "id": "fill_update",
@@ -2855,13 +2923,33 @@
         },
         {
           "from": "subscribe_market",
-          "to": "manage_strand",
-          "condition": "owner selects the strand product"
+          "to": "prepare_strand",
+          "condition": "owner selects an exact Strand mutation"
+        },
+        {
+          "from": "prepare_strand",
+          "to": "sign_strand",
+          "condition": "the maker verifies the exact one-instruction transaction"
+        },
+        {
+          "from": "sign_strand",
+          "to": "submit_strand",
+          "condition": "the maker fills the transaction's only signature slot"
         },
         {
           "from": "subscribe_market",
-          "to": "manage_current",
-          "condition": "owner selects the current product"
+          "to": "prepare_current",
+          "condition": "owner selects an exact Current mutation and the market reference is verified, or selects cancel"
+        },
+        {
+          "from": "prepare_current",
+          "to": "sign_current",
+          "condition": "the maker verifies the exact one-instruction transaction"
+        },
+        {
+          "from": "sign_current",
+          "to": "submit_current",
+          "condition": "the maker fills the transaction's only signature slot"
         },
         {
           "from": "manage_intent",
@@ -2869,12 +2957,12 @@
           "condition": "maker product is active"
         },
         {
-          "from": "manage_strand",
+          "from": "submit_strand",
           "to": "fill_update",
           "condition": "maker product is active"
         },
         {
-          "from": "manage_current",
+          "from": "submit_current",
           "to": "fill_update",
           "condition": "maker product is active"
         },

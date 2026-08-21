@@ -1801,6 +1801,100 @@ export interface PlatformMakerStatusResponse {
   readonly active_products: number;
 }
 
+export type PlatformMakerStrandPrepareInput =
+  | {
+      readonly action: "upsert";
+      readonly makerWallet: string;
+      readonly enabled: boolean;
+      readonly asyncOnly: boolean;
+      readonly syncSpreadTicks: number;
+      readonly midPriceAtoms: AtomicString | bigint;
+      readonly maxExposureBaseLots: AtomicString | bigint;
+      readonly bidOffsetsTicks: readonly number[];
+      readonly askOffsetsTicks: readonly number[];
+      readonly bidSizesBaseLots: readonly (AtomicString | bigint)[];
+      readonly askSizesBaseLots: readonly (AtomicString | bigint)[];
+      readonly validUntilSlot: AtomicString | bigint;
+    }
+  | {
+      readonly action: "recenter";
+      readonly makerWallet: string;
+      readonly newMidPriceAtoms: AtomicString | bigint;
+      readonly validUntilSlot: AtomicString | bigint;
+    }
+  | {
+      readonly action: "set_enabled";
+      readonly makerWallet: string;
+      readonly enabled: boolean;
+    }
+  | {
+      readonly action: "cancel";
+      readonly makerWallet: string;
+    };
+
+export type PlatformMakerCurrentPrepareInput =
+  | {
+      readonly action: "upsert";
+      readonly makerWallet: string;
+      readonly enabled: boolean;
+      readonly asyncOnly: boolean;
+      readonly halfSpreadBps: number;
+      readonly bandStepBps: number;
+      readonly maxConfidenceBps: number;
+      readonly maxOracleDeviationBps: number;
+      readonly maxOracleAgeSeconds: number;
+      readonly syncSpreadBps: number;
+      readonly maxExposureBaseAtoms: AtomicString | bigint;
+      readonly bidDepthBaseAtoms: readonly (AtomicString | bigint)[];
+      readonly askDepthBaseAtoms: readonly (AtomicString | bigint)[];
+      readonly validUntilSlot: AtomicString | bigint;
+    }
+  | {
+      readonly action: "cancel";
+      readonly makerWallet: string;
+    };
+
+export type PlatformMakerControlProduct = "strand" | "current";
+export type PlatformMakerControlAction =
+  | "strand_upsert"
+  | "strand_recenter"
+  | "strand_set_enabled"
+  | "strand_cancel"
+  | "current_upsert"
+  | "current_cancel";
+
+export interface PlatformMakerControlPrepareResponse {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly maker_control_id: PlatformEntityId;
+  readonly market_id: PlatformEntityId;
+  readonly maker_wallet: string;
+  readonly product: PlatformMakerControlProduct;
+  readonly action: PlatformMakerControlAction;
+  readonly transaction_base64: string;
+  readonly recent_blockhash: string;
+  readonly last_valid_block_height: number;
+  readonly expires_at_ms: number;
+}
+
+export interface PlatformMakerControlSubmitInput {
+  readonly makerControlId: string;
+  readonly signedTransactionBase64: string;
+  readonly idempotencyKey: string;
+}
+
+export interface PlatformMakerControlSubmitResponse {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly maker_control_id: PlatformEntityId;
+  readonly market_id: PlatformEntityId;
+  readonly maker_wallet: string;
+  readonly product: PlatformMakerControlProduct;
+  readonly action: PlatformMakerControlAction;
+  readonly signature: string;
+  readonly status: "submitted";
+}
+
 export type PlatformMakerProduct = "firm_order" | "intent" | "strand" | "current";
 
 /** One maker-side fill: the sanitized settlement view plus the maker product that produced it. */
