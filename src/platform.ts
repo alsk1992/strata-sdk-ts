@@ -337,6 +337,7 @@ export interface PlatformMarketStatusResponse {
   readonly server_time_ms: number;
   readonly status: PlatformMarketState;
   readonly tick_size_atoms: AtomicString;
+  /** Smallest accepted base-asset quantity: one atom. This is not a price or lot denominator. */
   readonly minimum_order_size_atoms: AtomicString;
 }
 
@@ -1809,11 +1810,14 @@ export type PlatformMakerStrandPrepareInput =
       readonly asyncOnly: boolean;
       readonly syncSpreadTicks: number;
       readonly midPriceAtoms: AtomicString | bigint;
-      readonly maxExposureBaseLots: AtomicString | bigint;
+      /** Total Strand exposure in base-asset atoms. */
+      readonly maxExposureBaseAtoms: AtomicString | bigint;
       readonly bidOffsetsTicks: readonly number[];
       readonly askOffsetsTicks: readonly number[];
-      readonly bidSizesBaseLots: readonly (AtomicString | bigint)[];
-      readonly askSizesBaseLots: readonly (AtomicString | bigint)[];
+      /** Exactly 16 bid sizes in base-asset atoms; zero disables a level. */
+      readonly bidSizesBaseAtoms: readonly (AtomicString | bigint)[];
+      /** Exactly 16 ask sizes in base-asset atoms; zero disables a level. */
+      readonly askSizesBaseAtoms: readonly (AtomicString | bigint)[];
       readonly validUntilSlot: AtomicString | bigint;
     }
   | {
