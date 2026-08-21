@@ -1665,11 +1665,11 @@ test("prepares and submits exact Strand and Current maker controls", async () =>
     asyncOnly: false,
     syncSpreadTicks: 2,
     midPriceAtoms: 150_000_000n,
-    maxExposureBaseLots: 1_000n,
+    maxExposureBaseAtoms: 1_000n,
     bidOffsetsTicks: Array.from({ length: 16 }, (_, index) => index + 1),
     askOffsetsTicks: Array.from({ length: 16 }, (_, index) => index + 1),
-    bidSizesBaseLots: ["10", ...Array(15).fill("0")],
-    askSizesBaseLots: ["10", ...Array(15).fill("0")],
+    bidSizesBaseAtoms: ["10", ...Array(15).fill("0")],
+    askSizesBaseAtoms: ["10", ...Array(15).fill("0")],
     validUntilSlot: 0n,
   });
   const current = await client.marketMaking.current.prepare(marketId, {
@@ -1691,7 +1691,7 @@ test("prepares and submits exact Strand and Current maker controls", async () =>
     `/v2/markets/${marketId}/makers/strands/submit`,
   ]);
   assert.equal(requests[0]?.body.mid_price_atoms, "150000000");
-  assert.equal(requests[0]?.body.max_exposure_base_lots, "1000");
+  assert.equal(requests[0]?.body.max_exposure_base_atoms, "1000");
   assert.equal(requests[1]?.body.action, "cancel");
   await assert.rejects(
     client.marketMaking.strand.prepare(marketId, {
@@ -1701,11 +1701,11 @@ test("prepares and submits exact Strand and Current maker controls", async () =>
       asyncOnly: false,
       syncSpreadTicks: 1,
       midPriceAtoms: "1",
-      maxExposureBaseLots: "1",
+      maxExposureBaseAtoms: "1",
       bidOffsetsTicks: [1],
       askOffsetsTicks: [1],
-      bidSizesBaseLots: ["1"],
-      askSizesBaseLots: ["1"],
+      bidSizesBaseAtoms: ["1"],
+      askSizesBaseAtoms: ["1"],
       validUntilSlot: "0",
     }),
     /exactly 16/,

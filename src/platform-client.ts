@@ -2089,8 +2089,8 @@ function makerStrandPrepareWire(request: PlatformMakerStrandPrepareInput): Maker
   if (request.action === "upsert") {
     const bidOffsets = checkedFixedIntegers(request.bidOffsetsTicks, "bidOffsetsTicks", 16, 0, 65_535);
     const askOffsets = checkedFixedIntegers(request.askOffsetsTicks, "askOffsetsTicks", 16, 0, 65_535);
-    const bidSizes = checkedFixedAtomics(request.bidSizesBaseLots, "bidSizesBaseLots", 16);
-    const askSizes = checkedFixedAtomics(request.askSizesBaseLots, "askSizesBaseLots", 16);
+    const bidSizes = checkedFixedAtomics(request.bidSizesBaseAtoms, "bidSizesBaseAtoms", 16);
+    const askSizes = checkedFixedAtomics(request.askSizesBaseAtoms, "askSizesBaseAtoms", 16);
     if (![...bidSizes, ...askSizes].some((size) => size !== "0")) {
       throw new TypeError("Strand requires at least one non-zero level");
     }
@@ -2110,15 +2110,15 @@ function makerStrandPrepareWire(request: PlatformMakerStrandPrepareInput): Maker
         async_only: checkedBoolean(request.asyncOnly, "asyncOnly"),
         sync_spread_ticks: checkedInteger(request.syncSpreadTicks, "syncSpreadTicks", 0, 65_535),
         mid_price_atoms: checkedAtomic(request.midPriceAtoms, "midPriceAtoms", false),
-        max_exposure_base_lots: checkedAtomic(
-          request.maxExposureBaseLots,
-          "maxExposureBaseLots",
+        max_exposure_base_atoms: checkedAtomic(
+          request.maxExposureBaseAtoms,
+          "maxExposureBaseAtoms",
           false,
         ),
         bid_offsets_ticks: bidOffsets,
         ask_offsets_ticks: askOffsets,
-        bid_sizes_base_lots: bidSizes,
-        ask_sizes_base_lots: askSizes,
+        bid_sizes_base_atoms: bidSizes,
+        ask_sizes_base_atoms: askSizes,
         valid_until_slot: checkedAtomic(request.validUntilSlot, "validUntilSlot", true),
       },
     };

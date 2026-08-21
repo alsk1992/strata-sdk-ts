@@ -5,5 +5,5 @@
   "server_time_ms": 1786550400000,
   "status": "active",
   "tick_size_atoms": "10000",
-  "minimum_order_size_atoms": "1000000"
+  "minimum_order_size_atoms": "1"
 }
