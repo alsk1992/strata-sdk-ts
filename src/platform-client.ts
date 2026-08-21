@@ -10,6 +10,8 @@ import {
 import {
   platformAccountSnapshotResponse,
   platformMakerReputationResponse,
+  platformMakerControlPrepareResponse,
+  platformMakerControlSubmitResponse,
   platformMakerStatusResponse,
   platformActionGraphResponse,
   platformAssetsResponse,
@@ -104,7 +106,14 @@ import type {
   PlatformAccountSnapshot,
   PlatformAccountSnapshotResponse,
   PlatformMakerReputationResponse,
+  PlatformMakerControlAction,
+  PlatformMakerControlPrepareResponse,
+  PlatformMakerControlProduct,
+  PlatformMakerControlSubmitInput,
+  PlatformMakerControlSubmitResponse,
+  PlatformMakerCurrentPrepareInput,
   PlatformMakerStatusResponse,
+  PlatformMakerStrandPrepareInput,
   PlatformActionGraphResponse,
   PlatformAssetsResponse,
   PlatformSwapQuoteInput,
@@ -337,7 +346,34 @@ export interface PlatformMakerReputationAuthorizedInput {
 
 export type PlatformMakerStatusAuthorizedInput = PlatformMakerReputationAuthorizedInput;
 
+export interface PlatformMakerStrandModule {
+  /** Build one exact unsigned maker transaction for external verification and signing. */
+  prepare(
+    marketId: string,
+    request: PlatformMakerStrandPrepareInput,
+  ): Promise<PlatformMakerControlPrepareResponse>;
+  /** Submit the same maker-signed transaction idempotently. */
+  submit(
+    marketId: string,
+    request: PlatformMakerControlSubmitInput,
+  ): Promise<PlatformMakerControlSubmitResponse>;
+}
+
+export interface PlatformMakerCurrentModule {
+  /** Current upsert fails closed without a verified market reference; cancel remains available. */
+  prepare(
+    marketId: string,
+    request: PlatformMakerCurrentPrepareInput,
+  ): Promise<PlatformMakerControlPrepareResponse>;
+  submit(
+    marketId: string,
+    request: PlatformMakerControlSubmitInput,
+  ): Promise<PlatformMakerControlSubmitResponse>;
+}
+
 export interface PlatformMarketMakingModule {
+  readonly strand: PlatformMakerStrandModule;
+  readonly current: PlatformMakerCurrentModule;
   /**
    * A maker's products, exposure, health, and kill state in one market — public
    * by wallet address, no signature. A signer is accepted for compatibility (its
@@ -564,6 +600,24 @@ export class StrataPlatformClient {
         this.subscribeAccount(signer, handlers, streamOptions),
     };
     this.marketMaking = {
+      strand: {
+        prepare: (marketId, request) => this.makerStrandPrepare(marketId, request),
+        submit: (marketId, request) => this.makerControlSubmit(
+          marketId,
+          "strands",
+          "strand",
+          request,
+        ),
+      },
+      current: {
+        prepare: (marketId, request) => this.makerCurrentPrepare(marketId, request),
+        submit: (marketId, request) => this.makerControlSubmit(
+          marketId,
+          "currents",
+          "current",
+          request,
+        ),
+      },
       statusAuthorizationPayload: (marketId, walletAddress, authorizationTimeMs) =>
         makerStatusAuthMessage(marketId, walletAddress, authorizationTimeMs),
       status: (marketId, signer) => this.makerStatus(marketId, signer),
@@ -1422,6 +1476,59 @@ export class StrataPlatformClient {
     };
   }
 
+  private async makerStrandPrepare(
+    marketId: string,
+    request: PlatformMakerStrandPrepareInput,
+  ): Promise<PlatformMakerControlPrepareResponse> {
+    await this.requireCapability("mm.strand.manage", "submit");
+    const id = checkedMarketId(marketId);
+    const wire = makerStrandPrepareWire(request);
+    const response = platformMakerControlPrepareResponse(
+      await this.post(`/v2/markets/${id}/makers/strands/prepare`, wire.body),
+    );
+    assertMakerControlPrepare(response, id, wire.makerWallet, "strand", wire.action);
+    return response;
+  }
+
+  private async makerCurrentPrepare(
+    marketId: string,
+    request: PlatformMakerCurrentPrepareInput,
+  ): Promise<PlatformMakerControlPrepareResponse> {
+    await this.requireCapability("mm.current.manage", "submit");
+    const id = checkedMarketId(marketId);
+    const wire = makerCurrentPrepareWire(request);
+    const response = platformMakerControlPrepareResponse(
+      await this.post(`/v2/markets/${id}/makers/currents/prepare`, wire.body),
+    );
+    assertMakerControlPrepare(response, id, wire.makerWallet, "current", wire.action);
+    return response;
+  }
+
+  private async makerControlSubmit(
+    marketId: string,
+    productPath: "strands" | "currents",
+    product: PlatformMakerControlProduct,
+    request: PlatformMakerControlSubmitInput,
+  ): Promise<PlatformMakerControlSubmitResponse> {
+    await this.requireCapability(`mm.${product}.manage`, "submit");
+    const id = checkedMarketId(marketId);
+    const controlId = checkedHandle(request.makerControlId, "makerControlId", "mc_");
+    const signedTransactionBase64 = request.signedTransactionBase64.trim();
+    decodeBase64(signedTransactionBase64);
+    const response = platformMakerControlSubmitResponse(
+      await this.post(`/v2/markets/${id}/makers/${productPath}/submit`, {
+        maker_control_id: controlId,
+        signed_transaction_base64: signedTransactionBase64,
+        idempotency_key: normalizeIdempotencyKey(request.idempotencyKey),
+      }),
+    );
+    assertMarket(response.market_id, id);
+    if (response.maker_control_id !== controlId || response.product !== product) {
+      throw new StrataContractError("maker-control receipt does not match the submission");
+    }
+    return response;
+  }
+
   private async makerStatus(
     marketId: string,
     maker: PlatformMakerIdentity,
@@ -1971,6 +2078,152 @@ function orderPlaceWire(operation: {
   };
 }
 
+interface MakerPrepareWire {
+  readonly body: Record<string, unknown>;
+  readonly makerWallet: string;
+  readonly action: PlatformMakerControlAction;
+}
+
+function makerStrandPrepareWire(request: PlatformMakerStrandPrepareInput): MakerPrepareWire {
+  const makerWallet = canonicalPublicKey(request.makerWallet, "makerWallet");
+  if (request.action === "upsert") {
+    const bidOffsets = checkedFixedIntegers(request.bidOffsetsTicks, "bidOffsetsTicks", 16, 0, 65_535);
+    const askOffsets = checkedFixedIntegers(request.askOffsetsTicks, "askOffsetsTicks", 16, 0, 65_535);
+    const bidSizes = checkedFixedAtomics(request.bidSizesBaseLots, "bidSizesBaseLots", 16);
+    const askSizes = checkedFixedAtomics(request.askSizesBaseLots, "askSizesBaseLots", 16);
+    if (![...bidSizes, ...askSizes].some((size) => size !== "0")) {
+      throw new TypeError("Strand requires at least one non-zero level");
+    }
+    if (
+      bidOffsets.some((offset, index) => offset === 0 && bidSizes[index] !== "0")
+      || askOffsets.some((offset, index) => offset === 0 && askSizes[index] !== "0")
+    ) {
+      throw new TypeError("active Strand levels require positive offsets");
+    }
+    return {
+      makerWallet,
+      action: "strand_upsert",
+      body: {
+        action: "upsert",
+        maker_wallet: makerWallet,
+        enabled: checkedBoolean(request.enabled, "enabled"),
+        async_only: checkedBoolean(request.asyncOnly, "asyncOnly"),
+        sync_spread_ticks: checkedInteger(request.syncSpreadTicks, "syncSpreadTicks", 0, 65_535),
+        mid_price_atoms: checkedAtomic(request.midPriceAtoms, "midPriceAtoms", false),
+        max_exposure_base_lots: checkedAtomic(
+          request.maxExposureBaseLots,
+          "maxExposureBaseLots",
+          false,
+        ),
+        bid_offsets_ticks: bidOffsets,
+        ask_offsets_ticks: askOffsets,
+        bid_sizes_base_lots: bidSizes,
+        ask_sizes_base_lots: askSizes,
+        valid_until_slot: checkedAtomic(request.validUntilSlot, "validUntilSlot", true),
+      },
+    };
+  }
+  if (request.action === "recenter") {
+    return {
+      makerWallet,
+      action: "strand_recenter",
+      body: {
+        action: "recenter",
+        maker_wallet: makerWallet,
+        new_mid_price_atoms: checkedAtomic(request.newMidPriceAtoms, "newMidPriceAtoms", false),
+        valid_until_slot: checkedAtomic(request.validUntilSlot, "validUntilSlot", true),
+      },
+    };
+  }
+  if (request.action === "set_enabled") {
+    return {
+      makerWallet,
+      action: "strand_set_enabled",
+      body: {
+        action: "set_enabled",
+        maker_wallet: makerWallet,
+        enabled: checkedBoolean(request.enabled, "enabled"),
+      },
+    };
+  }
+  if (request.action === "cancel") {
+    return {
+      makerWallet,
+      action: "strand_cancel",
+      body: { action: "cancel", maker_wallet: makerWallet },
+    };
+  }
+  throw new TypeError("Strand action is invalid");
+}
+
+function makerCurrentPrepareWire(request: PlatformMakerCurrentPrepareInput): MakerPrepareWire {
+  const makerWallet = canonicalPublicKey(request.makerWallet, "makerWallet");
+  if (request.action === "cancel") {
+    return {
+      makerWallet,
+      action: "current_cancel",
+      body: { action: "cancel", maker_wallet: makerWallet },
+    };
+  }
+  if (request.action !== "upsert") throw new TypeError("Current action is invalid");
+  const bidDepth = checkedFixedAtomics(request.bidDepthBaseAtoms, "bidDepthBaseAtoms", 8);
+  const askDepth = checkedFixedAtomics(request.askDepthBaseAtoms, "askDepthBaseAtoms", 8);
+  if (![...bidDepth, ...askDepth].some((depth) => depth !== "0")) {
+    throw new TypeError("Current requires at least one non-zero depth band");
+  }
+  return {
+    makerWallet,
+    action: "current_upsert",
+    body: {
+      action: "upsert",
+      maker_wallet: makerWallet,
+      enabled: checkedBoolean(request.enabled, "enabled"),
+      async_only: checkedBoolean(request.asyncOnly, "asyncOnly"),
+      half_spread_bps: checkedInteger(request.halfSpreadBps, "halfSpreadBps", 1, 65_535),
+      band_step_bps: checkedInteger(request.bandStepBps, "bandStepBps", 0, 65_535),
+      max_conf_bps: checkedInteger(request.maxConfidenceBps, "maxConfidenceBps", 1, 100),
+      max_oracle_dev_bps: checkedInteger(
+        request.maxOracleDeviationBps,
+        "maxOracleDeviationBps",
+        1,
+        500,
+      ),
+      max_oracle_age_secs: checkedInteger(
+        request.maxOracleAgeSeconds,
+        "maxOracleAgeSeconds",
+        0,
+        4_294_967_295,
+      ),
+      sync_spread_bps: checkedInteger(request.syncSpreadBps, "syncSpreadBps", 0, 65_535),
+      max_exposure_base_atoms: checkedAtomic(
+        request.maxExposureBaseAtoms,
+        "maxExposureBaseAtoms",
+        false,
+      ),
+      bid_depth_base_atoms: bidDepth,
+      ask_depth_base_atoms: askDepth,
+      valid_until_slot: checkedAtomic(request.validUntilSlot, "validUntilSlot", true),
+    },
+  };
+}
+
+function assertMakerControlPrepare(
+  response: PlatformMakerControlPrepareResponse,
+  marketId: string,
+  makerWallet: string,
+  product: PlatformMakerControlProduct,
+  action: PlatformMakerControlAction,
+): void {
+  assertMarket(response.market_id, marketId);
+  if (
+    response.maker_wallet !== makerWallet
+    || response.product !== product
+    || response.action !== action
+  ) {
+    throw new StrataContractError("prepared maker control changed the requested binding");
+  }
+}
+
 /** A maker identity is a wallet address or a signer whose public key names it. */
 function makerWalletAddress(maker: PlatformMakerIdentity): string {
   if (typeof maker === "string") return canonicalPublicKey(maker, "walletAddress");
@@ -2044,10 +2297,40 @@ function checkedInteger(
   return value;
 }
 
+function checkedBoolean(value: boolean, field: string): boolean {
+  if (typeof value !== "boolean") throw new TypeError(`${field} must be boolean`);
+  return value;
+}
+
+function checkedFixedIntegers(
+  values: readonly number[],
+  field: string,
+  length: number,
+  minimum: number,
+  maximum: number,
+): number[] {
+  if (!Array.isArray(values) || values.length !== length) {
+    throw new TypeError(`${field} must contain exactly ${length} values`);
+  }
+  return values.map((value, index) =>
+    checkedInteger(value, `${field}[${index}]`, minimum, maximum));
+}
+
+function checkedFixedAtomics(
+  values: readonly (string | bigint)[],
+  field: string,
+  length: number,
+): string[] {
+  if (!Array.isArray(values) || values.length !== length) {
+    throw new TypeError(`${field} must contain exactly ${length} values`);
+  }
+  return values.map((value, index) => checkedAtomic(value, `${field}[${index}]`, true));
+}
+
 function checkedHandle(
   value: string,
   field: string,
-  prefix: "oc_" | "or_" | "twc_" | "twctl_" | "vp_",
+  prefix: "oc_" | "or_" | "twc_" | "twctl_" | "vp_" | "mc_",
 ): string {
   const handle = value.trim();
   if (!new RegExp(`^${prefix}[0-9a-f]{32}$`).test(handle)) {

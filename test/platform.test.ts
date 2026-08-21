@@ -81,7 +81,7 @@ test("discovers the complete live-gated platform action graph", async () => {
 
   const result = await client.discovery.graph();
   assert.equal(result.entry_operation_id, "platform.capabilities.read");
-  assert.equal(result.operations.length, 67);
+  assert.equal(result.operations.length, 69);
   assert.ok(result.operations.some((operation) => operation.id === "twap.place.submit"));
   assert.ok(result.operations.some((operation) => operation.id === "twap.cancel.submit"));
   assert.ok(result.operations.some((operation) => operation.id === "vault.relay"));
@@ -1597,6 +1597,119 @@ test("exposes resting-order prepare, idempotent submit, and durable status", asy
   });
   assert.equal("venue" in (requests[0]?.body as Record<string, unknown>), false);
   assert.equal("program" in (requests[0]?.body as Record<string, unknown>), false);
+});
+
+test("prepares and submits exact Strand and Current maker controls", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  (capabilities.capabilities as Array<Record<string, unknown>>).push(
+    {
+      id: "mm.strand.manage",
+      risk: "submit",
+      required_scope: "mm:write",
+      transports: ["http", "mcp"],
+      mcp_exposure: "submit",
+    },
+    {
+      id: "mm.current.manage",
+      risk: "submit",
+      required_scope: "mm:write",
+      transports: ["http", "mcp"],
+      mcp_exposure: "submit",
+    },
+  );
+  const marketId = "market_22222222222222222222222222222222";
+  const makerWallet = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
+  const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push({ path, body });
+      const product = path.includes("/strands/") ? "strand" : "current";
+      const action = path.includes("/strands/") ? "strand_upsert" : "current_cancel";
+      if (path.endsWith("/prepare")) {
+        return Response.json({
+          schema_version: 2,
+          contract_version: "2.0",
+          maker_control_id: "mc_0123456789abcdef0123456789abcdef",
+          market_id: marketId,
+          maker_wallet: makerWallet,
+          product,
+          action,
+          transaction_base64: "AQIDBA==",
+          recent_blockhash: "11111111111111111111111111111111",
+          last_valid_block_height: 123,
+          expires_at_ms: 1_786_550_460_000,
+        });
+      }
+      return Response.json({
+        schema_version: 2,
+        contract_version: "2.0",
+        maker_control_id: "mc_0123456789abcdef0123456789abcdef",
+        market_id: marketId,
+        maker_wallet: makerWallet,
+        product,
+        action,
+        signature: "2".repeat(64),
+        status: "submitted",
+      });
+    },
+  });
+
+  const strand = await client.marketMaking.strand.prepare(marketId, {
+    action: "upsert",
+    makerWallet,
+    enabled: true,
+    asyncOnly: false,
+    syncSpreadTicks: 2,
+    midPriceAtoms: 150_000_000n,
+    maxExposureBaseLots: 1_000n,
+    bidOffsetsTicks: Array.from({ length: 16 }, (_, index) => index + 1),
+    askOffsetsTicks: Array.from({ length: 16 }, (_, index) => index + 1),
+    bidSizesBaseLots: ["10", ...Array(15).fill("0")],
+    askSizesBaseLots: ["10", ...Array(15).fill("0")],
+    validUntilSlot: 0n,
+  });
+  const current = await client.marketMaking.current.prepare(marketId, {
+    action: "cancel",
+    makerWallet,
+  });
+  const receipt = await client.marketMaking.strand.submit(marketId, {
+    makerControlId: strand.maker_control_id,
+    signedTransactionBase64: "AQIDBA==",
+    idempotencyKey: "maker-strand-1",
+  });
+
+  assert.equal(strand.action, "strand_upsert");
+  assert.equal(current.action, "current_cancel");
+  assert.equal(receipt.status, "submitted");
+  assert.deepEqual(requests.map(({ path }) => path), [
+    `/v2/markets/${marketId}/makers/strands/prepare`,
+    `/v2/markets/${marketId}/makers/currents/prepare`,
+    `/v2/markets/${marketId}/makers/strands/submit`,
+  ]);
+  assert.equal(requests[0]?.body.mid_price_atoms, "150000000");
+  assert.equal(requests[0]?.body.max_exposure_base_lots, "1000");
+  assert.equal(requests[1]?.body.action, "cancel");
+  await assert.rejects(
+    client.marketMaking.strand.prepare(marketId, {
+      action: "upsert",
+      makerWallet,
+      enabled: true,
+      asyncOnly: false,
+      syncSpreadTicks: 1,
+      midPriceAtoms: "1",
+      maxExposureBaseLots: "1",
+      bidOffsetsTicks: [1],
+      askOffsetsTicks: [1],
+      bidSizesBaseLots: ["1"],
+      askSizesBaseLots: ["1"],
+      validUntilSlot: "0",
+    }),
+    /exactly 16/,
+  );
 });
 
 test("executes a resting order with one signature after decoding and verifying the transaction", async () => {

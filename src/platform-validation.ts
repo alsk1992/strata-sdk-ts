@@ -12,6 +12,10 @@ import {
   type PlatformAccountOrder,
   type PlatformAccountSnapshotResponse,
   type PlatformMakerCurrentStatus,
+  type PlatformMakerControlAction,
+  type PlatformMakerControlPrepareResponse,
+  type PlatformMakerControlProduct,
+  type PlatformMakerControlSubmitResponse,
   type PlatformMakerDeadManGuard,
   type PlatformMakerEvent,
   type PlatformMakerFill,
@@ -3069,6 +3073,84 @@ export function platformOrderChallengeResponse(
     ),
     server_time_ms: serverTime,
     expires_at_ms: expiresAt,
+  };
+}
+
+function makerControlProduct(value: unknown): PlatformMakerControlProduct {
+  if (value !== "strand" && value !== "current") {
+    throw new Error("maker-control product is invalid");
+  }
+  return value;
+}
+
+function makerControlAction(value: unknown): PlatformMakerControlAction {
+  const actions: readonly PlatformMakerControlAction[] = [
+    "strand_upsert",
+    "strand_recenter",
+    "strand_set_enabled",
+    "strand_cancel",
+    "current_upsert",
+    "current_cancel",
+  ];
+  if (!actions.includes(value as PlatformMakerControlAction)) {
+    throw new Error("maker-control action is invalid");
+  }
+  return value as PlatformMakerControlAction;
+}
+
+export function platformMakerControlPrepareResponse(
+  value: unknown,
+): PlatformMakerControlPrepareResponse {
+  const response = object(value, "maker-control prepare response");
+  exactKeys(response, [
+    "schema_version", "contract_version", "maker_control_id", "market_id",
+    "maker_wallet", "product", "action", "transaction_base64", "recent_blockhash",
+    "last_valid_block_height", "expires_at_ms",
+  ], "maker-control prepare response");
+  version(response);
+  const recentBlockhash = string(response.recent_blockhash, "recent_blockhash");
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(recentBlockhash)) {
+    throw new Error("recent_blockhash is invalid");
+  }
+  return {
+    schema_version: PLATFORM_SCHEMA_VERSION,
+    contract_version: PLATFORM_CONTRACT_VERSION,
+    maker_control_id: opaqueHandle(response.maker_control_id, "maker_control_id", "mc_"),
+    market_id: marketId(response.market_id),
+    maker_wallet: walletAddress(response.maker_wallet, "maker_wallet"),
+    product: makerControlProduct(response.product),
+    action: makerControlAction(response.action),
+    transaction_base64: canonicalBase64(response.transaction_base64, "transaction_base64"),
+    recent_blockhash: recentBlockhash,
+    last_valid_block_height: integer(response.last_valid_block_height, "last_valid_block_height"),
+    expires_at_ms: integer(response.expires_at_ms, "expires_at_ms"),
+  };
+}
+
+export function platformMakerControlSubmitResponse(
+  value: unknown,
+): PlatformMakerControlSubmitResponse {
+  const response = object(value, "maker-control submit response");
+  exactKeys(response, [
+    "schema_version", "contract_version", "maker_control_id", "market_id",
+    "maker_wallet", "product", "action", "signature", "status",
+  ], "maker-control submit response");
+  version(response);
+  if (response.status !== "submitted") throw new Error("maker-control status is invalid");
+  const signature = string(response.signature, "signature");
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) {
+    throw new Error("signature is invalid");
+  }
+  return {
+    schema_version: PLATFORM_SCHEMA_VERSION,
+    contract_version: PLATFORM_CONTRACT_VERSION,
+    maker_control_id: opaqueHandle(response.maker_control_id, "maker_control_id", "mc_"),
+    market_id: marketId(response.market_id),
+    maker_wallet: walletAddress(response.maker_wallet, "maker_wallet"),
+    product: makerControlProduct(response.product),
+    action: makerControlAction(response.action),
+    signature,
+    status: "submitted",
   };
 }
 
