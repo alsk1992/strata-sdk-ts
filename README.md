@@ -4,6 +4,11 @@ Strict TypeScript bindings and a terminal client for Strata's versioned public
 agent contract. It works in Node 20+ and modern browsers with no runtime
 dependencies.
 
+The official hosted API currently has market, exact-output, and asset-to-asset
+Sonar quotes enabled. The SDK still checks the live capability catalog before
+each gated operation; that is a runtime safety check, not an inactive-feature
+notice.
+
 ```ts
 import { StrataClient } from "@stratabook/sdk";
 
