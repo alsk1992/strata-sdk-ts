@@ -92,7 +92,9 @@ import {
   type PlatformOrderCommandOptions,
 } from "./platform-order-stream.js";
 import {
+  verifyMakerTransaction,
   verifyOrderTransaction,
+  verifySignedTransactionMessage,
   verifyTwapTransaction,
 } from "./transaction-verifier.js";
 import {
@@ -112,8 +114,20 @@ import type {
   PlatformMakerControlSubmitInput,
   PlatformMakerControlSubmitResponse,
   PlatformMakerCurrentPrepareInput,
+  PlatformMakerQuickstartPrepareInput,
+  PlatformMakerQuickstartPrepared,
+  PlatformMakerQuickstartProduct,
+  PlatformMakerQuickstartResult,
+  PlatformMakerStartInput,
   PlatformMakerStatusResponse,
+  PlatformMakerStopInput,
+  PlatformMakerStopPrepareInput,
+  PlatformMakerStopPrepared,
+  PlatformMakerStopResult,
+  PlatformMakerSubmitPreparedInput,
   PlatformMakerStrandPrepareInput,
+  PlatformMakerTransactionSigner,
+  PlatformAsset,
   PlatformActionGraphResponse,
   PlatformAssetsResponse,
   PlatformSwapQuoteInput,
@@ -128,6 +142,7 @@ import type {
   PlatformFeeScheduleResponse,
   PlatformExecutionStatusResponse,
   PlatformMarketStatusResponse,
+  PlatformMarket,
   PlatformMarkResponse,
   PlatformServiceStatusResponse,
   PlatformMarketsResponse,
@@ -203,10 +218,14 @@ export interface PlatformDiscoveryModule {
 
 export interface PlatformAssetsModule {
   list(request?: PageRequest): Promise<PlatformAssetsResponse>;
+  /** Resolve an opaque asset ID or an unambiguous symbol. */
+  resolve(asset: string): Promise<PlatformAsset>;
 }
 
 export interface PlatformMarketsModule {
   list(request?: PageRequest): Promise<PlatformMarketsResponse>;
+  /** Resolve an opaque market ID or a case-insensitive label such as SOL/USDC. */
+  resolve(market: string): Promise<PlatformMarket>;
 }
 
 export interface PlatformQuotesModule {
@@ -374,6 +393,20 @@ export interface PlatformMakerCurrentModule {
 export interface PlatformMarketMakingModule {
   readonly strand: PlatformMakerStrandModule;
   readonly current: PlatformMakerCurrentModule;
+  /** Resolve human inputs and prepare one exact, externally signed maker start. */
+  prepareStart(request: PlatformMakerQuickstartPrepareInput): Promise<PlatformMakerQuickstartPrepared>;
+  /** Prepare, verify, sign, submit, and wait until the maker is visible on chain. */
+  start(request: PlatformMakerStartInput): Promise<PlatformMakerQuickstartResult>;
+  /** Prepare a product cancellation using a label or opaque market ID. */
+  prepareStop(request: PlatformMakerStopPrepareInput): Promise<PlatformMakerStopPrepared>;
+  /** Submit an externally signed quickstart preparation and wait for chain-derived state. */
+  submitPrepared(
+    request: PlatformMakerSubmitPreparedInput,
+  ): Promise<PlatformMakerQuickstartResult | PlatformMakerStopResult>;
+  /** Cancel and wait until the product is absent from chain-derived maker state. */
+  stop(request: PlatformMakerStopInput): Promise<PlatformMakerStopResult>;
+  /** Wait through a brief restart until a market is active with a fresh Strata mark. */
+  waitUntilReady(market: string, timeoutMs?: number): Promise<PlatformMarket>;
   /**
    * A maker's products, exposure, health, and kill state in one market — public
    * by wallet address, no signature. A signer is accepted for compatibility (its
@@ -560,8 +593,14 @@ export class StrataPlatformClient {
       graph: () => this.readActionGraph(),
       status: () => this.readPlatformStatus(),
     };
-    this.assets = { list: (request) => this.listAssets(request) };
-    this.markets = { list: (request) => this.listMarkets(request) };
+    this.assets = {
+      list: (request) => this.listAssets(request),
+      resolve: (asset) => this.resolveAsset(asset),
+    };
+    this.markets = {
+      list: (request) => this.listMarkets(request),
+      resolve: (market) => this.resolveMarket(market),
+    };
     this.quotes = { swap: (request) => this.swapQuote(request) };
     this.books = {
       snapshot: (marketId, request) => this.bookSnapshot(marketId, request),
@@ -618,6 +657,12 @@ export class StrataPlatformClient {
           request,
         ),
       },
+      prepareStart: (request) => this.makerPrepareStart(request),
+      start: (request) => this.makerStart(request),
+      prepareStop: (request) => this.makerPrepareStop(request),
+      submitPrepared: (request) => this.makerSubmitPrepared(request),
+      stop: (request) => this.makerStop(request),
+      waitUntilReady: (market, timeoutMs) => this.waitForMakerMarket(market, timeoutMs),
       statusAuthorizationPayload: (marketId, walletAddress, authorizationTimeMs) =>
         makerStatusAuthMessage(marketId, walletAddress, authorizationTimeMs),
       status: (marketId, signer) => this.makerStatus(marketId, signer),
@@ -705,6 +750,64 @@ export class StrataPlatformClient {
   private async listMarkets(request: PageRequest = {}): Promise<PlatformMarketsResponse> {
     await this.requireReadCapability("markets.read");
     return platformMarketsResponse(await this.get(`/v2/markets${pageQuery(request)}`));
+  }
+
+  private async allAssets(): Promise<readonly PlatformAsset[]> {
+    const assets: PlatformAsset[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.listAssets({ limit: MAX_PAGE_SIZE, ...(cursor ? { cursor } : {}) });
+      assets.push(...page.assets);
+      cursor = page.page.has_more ? page.page.next_cursor ?? undefined : undefined;
+      if (page.page.has_more && cursor === undefined) {
+        throw new StrataContractError("asset discovery pagination is incomplete");
+      }
+    } while (cursor !== undefined);
+    return assets;
+  }
+
+  private async allMarkets(): Promise<readonly PlatformMarket[]> {
+    const markets: PlatformMarket[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.listMarkets({ limit: MAX_PAGE_SIZE, ...(cursor ? { cursor } : {}) });
+      markets.push(...page.markets);
+      cursor = page.page.has_more ? page.page.next_cursor ?? undefined : undefined;
+      if (page.page.has_more && cursor === undefined) {
+        throw new StrataContractError("market discovery pagination is incomplete");
+      }
+    } while (cursor !== undefined);
+    return markets;
+  }
+
+  private async resolveAsset(reference: string): Promise<PlatformAsset> {
+    const requested = reference.trim();
+    if (!requested) throw new TypeError("asset must be an asset ID or symbol");
+    const matches = (await this.allAssets()).filter((asset) =>
+      asset.asset_id === requested || asset.symbol.toLowerCase() === requested.toLowerCase()
+    );
+    if (matches.length !== 1) {
+      throw new StrataContractError(
+        matches.length === 0 ? `asset is not available: ${reference}` : `asset is ambiguous: ${reference}`,
+      );
+    }
+    return matches[0]!;
+  }
+
+  private async resolveMarket(reference: string): Promise<PlatformMarket> {
+    const requested = reference.trim();
+    if (!requested) throw new TypeError("market must be a market ID or label");
+    const matches = (await this.allMarkets()).filter((market) =>
+      market.market_id === requested || market.label.toLowerCase() === requested.toLowerCase()
+    );
+    if (matches.length !== 1) {
+      throw new StrataContractError(
+        matches.length === 0
+          ? `market is not available: ${reference}`
+          : `market label is ambiguous; use its market ID: ${reference}`,
+      );
+    }
+    return matches[0]!;
   }
 
   private async swapQuote(request: PlatformSwapQuoteInput): Promise<PlatformSwapQuoteResponse> {
@@ -1493,6 +1596,236 @@ export class StrataPlatformClient {
     );
     assertMakerControlPrepare(response, id, wire.makerWallet, "strand", wire.action);
     return response;
+  }
+
+  private async waitForMakerMarket(reference: string, timeoutMs = 30_000): Promise<PlatformMarket> {
+    checkedInteger(timeoutMs, "timeoutMs", 1, 300_000);
+    const market = await this.resolveMarket(reference);
+    const deadline = Date.now() + timeoutMs;
+    let lastProblem = "market is not active";
+    do {
+      try {
+        const [status, mark] = await Promise.all([
+          this.marketStatus(market.market_id),
+          this.mark(market.market_id),
+        ]);
+        if (status.status === "active" && !mark.stale && mark.price_atoms_per_base_unit !== null) {
+          return market;
+        }
+        lastProblem = status.status !== "active"
+          ? `market is ${status.status}`
+          : "Strata mark is not fresh";
+      } catch (error) {
+        if (!(error instanceof StrataApiError) || !error.retryable) throw error;
+        lastProblem = error.message;
+      }
+      await delay(Math.min(500, Math.max(0, deadline - Date.now())));
+    } while (Date.now() < deadline);
+    throw new StrataContractError(`market did not become ready within ${timeoutMs}ms: ${lastProblem}`);
+  }
+
+  private async makerPrepareStart(
+    request: PlatformMakerQuickstartPrepareInput,
+  ): Promise<PlatformMakerQuickstartPrepared> {
+    const makerWallet = canonicalPublicKey(request.makerWallet, "makerWallet");
+    const product = checkedMakerProduct(request.product);
+    const market = await this.waitForMakerMarket(request.market);
+    const [assets, marketStatus, mark, makerStatus] = await Promise.all([
+      this.allAssets(),
+      this.marketStatus(market.market_id),
+      this.mark(market.market_id),
+      this.makerStatus(market.market_id, makerWallet),
+    ]);
+    const baseAsset = assets.find((asset) => asset.asset_id === market.base_asset_id);
+    if (!baseAsset) throw new StrataContractError("market base asset is missing from discovery");
+    if (mark.stale || mark.price_atoms_per_base_unit === null) {
+      throw new StrataContractError("the market does not have a fresh Strata mark");
+    }
+    const operation = makerQuickstartOperation({
+      request,
+      makerWallet,
+      product,
+      baseAsset,
+      currentSlot: BigInt(makerStatus.current_slot),
+      markPriceAtoms: BigInt(mark.price_atoms_per_base_unit),
+      tickSizeAtoms: BigInt(marketStatus.tick_size_atoms),
+    });
+    const prepared = product === "strand"
+      ? await this.makerStrandPrepare(market.market_id, operation as PlatformMakerStrandPrepareInput)
+      : await this.makerCurrentPrepare(market.market_id, operation as PlatformMakerCurrentPrepareInput);
+    const result = { market, base_asset: baseAsset, product, operation, prepared };
+    await verifyMakerTransaction({ marketId: market.market_id, makerWallet, operation, prepared });
+    return result;
+  }
+
+  private async makerStart(request: PlatformMakerStartInput): Promise<PlatformMakerQuickstartResult> {
+    const signer = checkedMakerTransactionSigner(request.signer);
+    const prepared = await this.makerPrepareStart({
+      ...request,
+      makerWallet: signer.publicKey,
+    });
+    await verifyMakerTransaction({
+      marketId: prepared.market.market_id,
+      makerWallet: signer.publicKey,
+      operation: prepared.operation,
+      prepared: prepared.prepared,
+    });
+    const signedTransactionBase64 = await signer.signTransaction(
+      prepared.prepared.transaction_base64,
+    );
+    return this.makerSubmitPrepared({
+      prepared,
+      signedTransactionBase64,
+      ...(request.confirmationTimeoutMs === undefined
+        ? {}
+        : { confirmationTimeoutMs: request.confirmationTimeoutMs }),
+      ...(request.confirmationPollMs === undefined
+        ? {}
+        : { confirmationPollMs: request.confirmationPollMs }),
+    }) as Promise<PlatformMakerQuickstartResult>;
+  }
+
+  private async makerSubmitPrepared(
+    request: PlatformMakerSubmitPreparedInput,
+  ): Promise<PlatformMakerQuickstartResult | PlatformMakerStopResult> {
+    const { prepared } = request;
+    const makerWallet = prepared.prepared.maker_wallet;
+    await verifyMakerTransaction({
+      marketId: prepared.market.market_id,
+      makerWallet,
+      operation: prepared.operation,
+      prepared: prepared.prepared,
+    });
+    const signedTransactionBase64 = request.signedTransactionBase64.trim();
+    verifySignedTransactionMessage(
+      prepared.prepared.transaction_base64,
+      signedTransactionBase64,
+    );
+    const confirmationTimeoutMs = checkedOptionalTimeout(
+      request.confirmationTimeoutMs,
+      "confirmationTimeoutMs",
+      45_000,
+    );
+    const confirmationPollMs = checkedOptionalTimeout(
+      request.confirmationPollMs,
+      "confirmationPollMs",
+      500,
+      100,
+      5_000,
+    );
+    const input = {
+      makerControlId: prepared.prepared.maker_control_id,
+      signedTransactionBase64,
+      idempotencyKey: request.idempotencyKey ?? prepared.prepared.maker_control_id,
+    };
+    const receipt = prepared.product === "strand"
+      ? await this.makerControlSubmit(prepared.market.market_id, "strands", "strand", input)
+      : await this.makerControlSubmit(prepared.market.market_id, "currents", "current", input);
+    const isStart = prepared.operation.action !== "cancel";
+    const makerStatus = await this.waitForMakerProduct(
+      prepared.market.market_id,
+      makerWallet,
+      prepared.product,
+      prepared.operation,
+      isStart,
+      confirmationTimeoutMs,
+      confirmationPollMs,
+      receipt.signature,
+    );
+    if (isStart && "base_asset" in prepared) {
+      return { ...prepared, receipt, status: "confirmed", maker_status: makerStatus };
+    }
+    return {
+      ...prepared,
+      receipt,
+      status: "confirmed",
+      maker_status: makerStatus,
+      already_stopped: false,
+    };
+  }
+
+  private async makerPrepareStop(
+    request: PlatformMakerStopPrepareInput,
+  ): Promise<PlatformMakerStopPrepared> {
+    const makerWallet = canonicalPublicKey(request.makerWallet, "makerWallet");
+    const product = checkedMakerProduct(request.product);
+    const market = await this.resolveMarket(request.market);
+    const operation = { action: "cancel", makerWallet } as const;
+    const prepared = product === "strand"
+      ? await this.makerStrandPrepare(market.market_id, operation)
+      : await this.makerCurrentPrepare(market.market_id, operation);
+    await verifyMakerTransaction({ marketId: market.market_id, makerWallet, operation, prepared });
+    return { market, product, operation, prepared };
+  }
+
+  private async makerStop(request: PlatformMakerStopInput): Promise<PlatformMakerStopResult> {
+    const signer = checkedMakerTransactionSigner(request.signer);
+    const product = checkedMakerProduct(request.product);
+    const market = await this.resolveMarket(request.market);
+    const operation = { action: "cancel", makerWallet: signer.publicKey } as const;
+    const before = await this.makerStatus(market.market_id, signer.publicKey);
+    if (!makerProductPresent(before, product)) {
+      return {
+        market,
+        product,
+        operation,
+        prepared: null,
+        receipt: null,
+        status: "confirmed",
+        maker_status: before,
+        already_stopped: true,
+      };
+    }
+    const stop = await this.makerPrepareStop({
+      market: market.market_id,
+      product,
+      makerWallet: signer.publicKey,
+    });
+    await verifyMakerTransaction({
+      marketId: market.market_id,
+      makerWallet: signer.publicKey,
+      operation,
+      prepared: stop.prepared,
+    });
+    const signedTransactionBase64 = await signer.signTransaction(stop.prepared.transaction_base64);
+    return this.makerSubmitPrepared({
+      prepared: stop,
+      signedTransactionBase64,
+      ...(request.confirmationTimeoutMs === undefined
+        ? {}
+        : { confirmationTimeoutMs: request.confirmationTimeoutMs }),
+      ...(request.confirmationPollMs === undefined
+        ? {}
+        : { confirmationPollMs: request.confirmationPollMs }),
+    }) as Promise<PlatformMakerStopResult>;
+  }
+
+  private async waitForMakerProduct(
+    marketId: string,
+    makerWallet: string,
+    product: PlatformMakerQuickstartProduct,
+    operation: PlatformMakerStrandPrepareInput | PlatformMakerCurrentPrepareInput,
+    present: boolean,
+    timeoutMs: number,
+    pollMs: number,
+    signature: string,
+  ): Promise<PlatformMakerStatusResponse> {
+    const deadline = Date.now() + timeoutMs;
+    do {
+      try {
+        const status = await this.makerStatus(marketId, makerWallet);
+        const observed = present
+          ? makerProductMatches(status, product, operation)
+          : !makerProductPresent(status, product);
+        if (observed) return status;
+      } catch (error) {
+        if (!(error instanceof StrataApiError) || !error.retryable) throw error;
+      }
+      await delay(Math.min(pollMs, Math.max(0, deadline - Date.now())));
+    } while (Date.now() < deadline);
+    throw new StrataContractError(
+      `maker transaction ${signature} was submitted but not observed within ${timeoutMs}ms`,
+    );
   }
 
   private async makerCurrentPrepare(
@@ -2901,4 +3234,226 @@ async function opaqueProductId(kind: "order" | "twap", value: string): Promise<s
   const prefix = new TextEncoder().encode(`strata-sdk-product:v1\0${kind}\0${value}`);
   const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", prefix));
   return `${kind}_${hexBytes(digest.slice(0, 16))}`;
+}
+
+function checkedMakerProduct(value: string): PlatformMakerQuickstartProduct {
+  if (value !== "strand" && value !== "current") {
+    throw new TypeError("product must be strand or current");
+  }
+  return value;
+}
+
+function checkedMakerTransactionSigner(
+  signer: PlatformMakerTransactionSigner,
+): PlatformMakerTransactionSigner {
+  if (!signer || typeof signer !== "object" || typeof signer.signTransaction !== "function") {
+    throw new TypeError("signer must provide publicKey and signTransaction");
+  }
+  const publicKey = canonicalPublicKey(signer.publicKey, "signer.publicKey");
+  return {
+    publicKey,
+    signTransaction: (transaction) => signer.signTransaction(transaction),
+  };
+}
+
+function checkedOptionalTimeout(
+  value: number | undefined,
+  field: string,
+  fallback: number,
+  minimum = 1_000,
+  maximum = 300_000,
+): number {
+  const resolved = value ?? fallback;
+  return checkedInteger(resolved, field, minimum, maximum);
+}
+
+function makerDurationSlots(value: number | string | undefined): bigint {
+  let seconds: number;
+  if (value === undefined) {
+    seconds = 600;
+  } else if (typeof value === "number") {
+    seconds = checkedInteger(value, "duration", 1, 604_800);
+  } else {
+    const match = /^([1-9][0-9]*)(s|m|h|d)$/i.exec(value.trim());
+    if (!match) throw new TypeError("duration must be seconds or look like 30s, 10m, 2h, or 1d");
+    const amount = Number(match[1]);
+    const scale = ({ s: 1, m: 60, h: 3_600, d: 86_400 } as const)[
+      match[2]!.toLowerCase() as "s" | "m" | "h" | "d"
+    ];
+    seconds = amount * scale;
+    checkedInteger(seconds, "duration", 1, 604_800);
+  }
+  // Solana targets 400ms slots. Rounding up avoids expiring before the requested duration.
+  return BigInt(Math.ceil(seconds * 2.5));
+}
+
+function humanBaseAtoms(value: string, asset: PlatformAsset): bigint {
+  const match = /^([0-9]+)(?:\.([0-9]+))?(?:\s+([A-Za-z0-9._-]+))?$/.exec(value.trim());
+  if (!match) throw new TypeError(`size must be an exact ${asset.symbol} amount, for example 0.01 ${asset.symbol}`);
+  const symbol = match[3];
+  if (symbol && symbol.toLowerCase() !== asset.symbol.toLowerCase()) {
+    throw new TypeError(`size is denominated in ${asset.symbol}, not ${symbol}`);
+  }
+  const fraction = match[2] ?? "";
+  if (fraction.length > asset.decimals) {
+    throw new TypeError(`${asset.symbol} supports at most ${asset.decimals} decimal places`);
+  }
+  const atoms = BigInt(match[1]!) * (10n ** BigInt(asset.decimals))
+    + BigInt((fraction + "0".repeat(asset.decimals)).slice(0, asset.decimals) || "0");
+  if (atoms <= 0n || atoms > 18_446_744_073_709_551_615n) {
+    throw new TypeError("size is outside the supported base-asset range");
+  }
+  return atoms;
+}
+
+function splitMakerSize(total: bigint, levels: number, width: number): readonly string[] {
+  const active = total < BigInt(levels) ? Number(total) : levels;
+  const quotient = total / BigInt(active);
+  const remainder = total % BigInt(active);
+  return Array.from({ length: width }, (_, index) => {
+    if (index >= active) return "0";
+    return (quotient + (BigInt(index) < remainder ? 1n : 0n)).toString();
+  });
+}
+
+function makerQuickstartOperation(context: {
+  readonly request: PlatformMakerQuickstartPrepareInput;
+  readonly makerWallet: string;
+  readonly product: PlatformMakerQuickstartProduct;
+  readonly baseAsset: PlatformAsset;
+  readonly currentSlot: bigint;
+  readonly markPriceAtoms: bigint;
+  readonly tickSizeAtoms: bigint;
+}): PlatformMakerStrandPrepareInput | PlatformMakerCurrentPrepareInput {
+  const { request, makerWallet, product, baseAsset, currentSlot, markPriceAtoms, tickSizeAtoms } = context;
+  const spreadBps = checkedInteger(request.spreadBps, "spreadBps", 1, 5_000);
+  const maximumLevels = product === "strand" ? 16 : 8;
+  const levels = checkedInteger(request.levels ?? 3, "levels", 1, maximumLevels);
+  const levelStepBps = checkedInteger(
+    request.levelStepBps ?? spreadBps,
+    "levelStepBps",
+    1,
+    5_000,
+  );
+  const furthestBps = spreadBps + (levels - 1) * levelStepBps;
+  if (furthestBps > 65_535) throw new TypeError("the furthest maker level exceeds 65,535 bps");
+  const side = request.side ?? "both";
+  if (side !== "both" && side !== "buy" && side !== "sell") {
+    throw new TypeError("side must be both, buy, or sell");
+  }
+  if (typeof request.asyncOnly !== "undefined" && typeof request.asyncOnly !== "boolean") {
+    throw new TypeError("asyncOnly must be boolean");
+  }
+  const sizeAtoms = humanBaseAtoms(request.size, baseAsset);
+  const validUntilSlot = currentSlot + makerDurationSlots(request.duration);
+  if (validUntilSlot > 18_446_744_073_709_551_615n) {
+    throw new TypeError("duration exceeds the supported slot range");
+  }
+  const width = product === "strand" ? 16 : 8;
+  const depth = splitMakerSize(sizeAtoms, levels, width);
+  const zero = Array(width).fill("0") as string[];
+  const bids = side === "sell" ? zero : [...depth];
+  const asks = side === "buy" ? zero : [...depth];
+  if (product === "current") {
+    return {
+      action: "upsert",
+      makerWallet,
+      enabled: true,
+      asyncOnly: request.asyncOnly ?? false,
+      halfSpreadBps: spreadBps,
+      bandStepBps: levelStepBps,
+      maxConfidenceBps: 100,
+      maxOracleDeviationBps: 500,
+      maxOracleAgeSeconds: 10,
+      syncSpreadBps: 0,
+      maxExposureBaseAtoms: sizeAtoms.toString(),
+      bidDepthBaseAtoms: bids,
+      askDepthBaseAtoms: asks,
+      validUntilSlot: validUntilSlot.toString(),
+    };
+  }
+  if (tickSizeAtoms <= 0n || markPriceAtoms <= 0n) {
+    throw new StrataContractError("the market mark or tick size is invalid");
+  }
+  const midPriceAtoms = ((markPriceAtoms + tickSizeAtoms / 2n) / tickSizeAtoms) * tickSizeAtoms;
+  if (midPriceAtoms <= 0n) throw new StrataContractError("the mark rounds below one tick");
+  const offsets = Array.from({ length: 16 }, (_, index) => {
+    if (index >= levels) return 0;
+    const bps = BigInt(spreadBps + index * levelStepBps);
+    const ticks = (midPriceAtoms * bps + 10_000n * tickSizeAtoms - 1n)
+      / (10_000n * tickSizeAtoms);
+    if (ticks <= 0n || ticks > 65_535n) {
+      throw new TypeError("a Strand level cannot be represented on this market's tick grid");
+    }
+    return Number(ticks);
+  });
+  return {
+    action: "upsert",
+    makerWallet,
+    enabled: true,
+    asyncOnly: request.asyncOnly ?? false,
+    syncSpreadTicks: 0,
+    midPriceAtoms: midPriceAtoms.toString(),
+    maxExposureBaseAtoms: sizeAtoms.toString(),
+    bidOffsetsTicks: offsets,
+    askOffsetsTicks: offsets,
+    bidSizesBaseAtoms: bids,
+    askSizesBaseAtoms: asks,
+    validUntilSlot: validUntilSlot.toString(),
+  };
+}
+
+function makerProductPresent(
+  status: PlatformMakerStatusResponse,
+  product: PlatformMakerQuickstartProduct,
+): boolean {
+  return product === "strand" ? status.strands.length > 0 : status.currents.length > 0;
+}
+
+function sameAtomicArray(actual: readonly string[], expected: readonly (string | bigint)[]): boolean {
+  const normalizedActual = [...actual];
+  const normalizedExpected = expected.map(String);
+  while (normalizedActual.at(-1) === "0") normalizedActual.pop();
+  while (normalizedExpected.at(-1) === "0") normalizedExpected.pop();
+  return normalizedActual.length === normalizedExpected.length
+    && normalizedActual.every((value, index) => value === normalizedExpected[index]);
+}
+
+function makerProductMatches(
+  status: PlatformMakerStatusResponse,
+  product: PlatformMakerQuickstartProduct,
+  operation: PlatformMakerStrandPrepareInput | PlatformMakerCurrentPrepareInput,
+): boolean {
+  if (operation.action !== "upsert") return false;
+  if (product === "strand" && "midPriceAtoms" in operation) {
+    return status.strands.some((strand) =>
+      strand.enabled === operation.enabled
+      && strand.async_only === operation.asyncOnly
+      && strand.mid_price_atoms === String(operation.midPriceAtoms)
+      && strand.maximum_exposure_atoms === String(operation.maxExposureBaseAtoms)
+      && strand.valid_until_slot === String(operation.validUntilSlot)
+      && sameAtomicArray(strand.bids.map((level) => level.size_atoms), operation.bidSizesBaseAtoms)
+      && sameAtomicArray(strand.asks.map((level) => level.size_atoms), operation.askSizesBaseAtoms)
+    );
+  }
+  if (product === "current" && "halfSpreadBps" in operation) {
+    return status.currents.some((current) =>
+      current.enabled === operation.enabled
+      && current.async_only === operation.asyncOnly
+      && current.half_spread_bps === operation.halfSpreadBps
+      && current.band_step_bps === operation.bandStepBps
+      && current.maximum_confidence_bps === operation.maxConfidenceBps
+      && current.maximum_oracle_age_seconds === operation.maxOracleAgeSeconds
+      && current.sync_spread_bps === operation.syncSpreadBps
+      && current.maximum_exposure_atoms === String(operation.maxExposureBaseAtoms)
+      && current.valid_until_slot === String(operation.validUntilSlot)
+      && sameAtomicArray(current.bid_depth_atoms, operation.bidDepthBaseAtoms)
+      && sameAtomicArray(current.ask_depth_atoms, operation.askDepthBaseAtoms)
+    );
+  }
+  return false;
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }

@@ -10,6 +10,7 @@ import {
   StrataContractError,
   StrataPlatformClient,
   validateOrderAuthorization,
+  verifySignedTransactionMessage,
   type PlatformAccountView,
   type PlatformBookView,
   type PlatformMakerView,
@@ -1750,6 +1751,256 @@ test("prepares and submits exact Strand and Current maker controls", async () =>
       validUntilSlot: "0",
     }),
     /exactly 16/,
+  );
+});
+
+test("starts a Current from human inputs and waits for exact chain-derived state", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  addPlatformCapabilities(capabilities, [
+    { id: "markets.status.read", transports: ["http"] },
+    { id: "market_data.marks.read", transports: ["http"] },
+    { id: "mm.status.read", transports: ["http"] },
+    { id: "mm.current.manage", risk: "submit", transports: ["http", "mcp"] },
+  ]);
+  const assets = await v2Fixture("assets");
+  const markets = await v2Fixture("markets");
+  const marketStatus = await v2Fixture("status");
+  const mark = await v2Fixture("mark");
+  const makerStatus = await v2Fixture("maker-status");
+
+  const makerKey = new Uint8Array(32).fill(2);
+  const marketKey = new Uint8Array(32).fill(3);
+  const recentBlockhash = new Uint8Array(32).fill(7);
+  const makerWallet = base58Encode(makerKey);
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`strata-sdk-product:v1\0market\0${base58Encode(marketKey)}`),
+  ));
+  const marketId = `market_${Array.from(
+    digest.slice(0, 16),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("")}`;
+  const market = (markets.markets as Array<Record<string, unknown>>)[0]!;
+  market.market_id = marketId;
+  marketStatus.market_id = marketId;
+  mark.market_id = marketId;
+  mark.price_atoms_per_base_unit = "150000000";
+  makerStatus.market_id = marketId;
+  makerStatus.wallet_address = makerWallet;
+  makerStatus.current_slot = "1000";
+  makerStatus.firm_orders = {
+    resting_orders: 0,
+    bid_orders: 0,
+    ask_orders: 0,
+    bid_size_atoms: "0",
+    ask_size_atoms: "0",
+  };
+  makerStatus.intent = null;
+  makerStatus.signed_quotes = { eligible: false, live_quotes: [] };
+  makerStatus.strands = [];
+  makerStatus.currents = [];
+  makerStatus.dead_man_guards = [];
+  makerStatus.active_products = 0;
+
+  const u16 = (value: number): Uint8Array => {
+    const bytes = new Uint8Array(2);
+    new DataView(bytes.buffer).setUint16(0, value, true);
+    return bytes;
+  };
+  const u32 = (value: number): Uint8Array => {
+    const bytes = new Uint8Array(4);
+    new DataView(bytes.buffer).setUint32(0, value, true);
+    return bytes;
+  };
+  const u64 = (value: bigint): Uint8Array => {
+    const bytes = new Uint8Array(8);
+    new DataView(bytes.buffer).setBigUint64(0, value, true);
+    return bytes;
+  };
+  const compact = (value: number): Uint8Array => {
+    const bytes: number[] = [];
+    let remaining = value;
+    do {
+      const byte = remaining & 0x7f;
+      remaining >>= 7;
+      bytes.push(remaining === 0 ? byte : byte | 0x80);
+    } while (remaining !== 0);
+    return Uint8Array.from(bytes);
+  };
+  const join = (...parts: readonly Uint8Array[]): Uint8Array => {
+    const bytes = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
+    let offset = 0;
+    for (const part of parts) {
+      bytes.set(part, offset);
+      offset += part.length;
+    }
+    return bytes;
+  };
+  const depth = [3_333_334n, 3_333_333n, 3_333_333n, 0n, 0n, 0n, 0n, 0n];
+  const instructionData = join(
+    new Uint8Array([47, 1, 255]),
+    u16(5),
+    u16(5),
+    u16(100),
+    u16(500),
+    u32(10),
+    u16(0),
+    u64(10_000_000n),
+    ...depth.map(u64),
+    ...depth.map(u64),
+    u64(2_500n),
+  );
+  assert.equal(instructionData.length, 161);
+  const staticKeys = [
+    makerKey,
+    marketKey,
+    new Uint8Array(32).fill(4),
+    new Uint8Array(32).fill(5),
+    new Uint8Array(32),
+    new Uint8Array(32).fill(6),
+  ];
+  const instruction = join(
+    new Uint8Array([5]),
+    compact(5),
+    new Uint8Array([0, 1, 2, 3, 4]),
+    compact(instructionData.length),
+    instructionData,
+  );
+  const transactionBase64 = Buffer.from(join(
+    compact(1),
+    new Uint8Array(64),
+    new Uint8Array([1, 0, 2]),
+    compact(staticKeys.length),
+    ...staticKeys,
+    recentBlockhash,
+    compact(1),
+    instruction,
+  )).toString("base64");
+  const prepared = {
+    schema_version: 2,
+    contract_version: "2.0",
+    maker_control_id: "mc_0123456789abcdef0123456789abcdef",
+    market_id: marketId,
+    maker_wallet: makerWallet,
+    product: "current",
+    action: "current_upsert",
+    transaction_base64: transactionBase64,
+    recent_blockhash: base58Encode(recentBlockhash),
+    last_valid_block_height: 400_000_000,
+    expires_at_ms: Date.now() + 60_000,
+  };
+  const receipt = {
+    schema_version: 2,
+    contract_version: "2.0",
+    maker_control_id: prepared.maker_control_id,
+    market_id: marketId,
+    maker_wallet: makerWallet,
+    product: "current",
+    action: "current_upsert",
+    signature: "2".repeat(64),
+    status: "submitted",
+  };
+  let submitted = false;
+  let prepareBody: Record<string, unknown> | undefined;
+  let submitBody: Record<string, unknown> | undefined;
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      if (path === "/v2/assets") return Response.json(assets);
+      if (path === "/v2/markets") return Response.json(markets);
+      if (path.endsWith("/status")) return Response.json(marketStatus);
+      if (path.endsWith("/marks")) return Response.json(mark);
+      if (path.endsWith("/makers/currents/prepare")) {
+        prepareBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json(prepared);
+      }
+      if (path.endsWith("/makers/currents/submit")) {
+        submitBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        submitted = true;
+        return Response.json(receipt);
+      }
+      if (path.endsWith(`/makers/${makerWallet}`)) {
+        if (!submitted) return Response.json(makerStatus);
+        return Response.json({
+          ...makerStatus,
+          currents: [{
+            enabled: true,
+            async_only: false,
+            expired: false,
+            half_spread_bps: 5,
+            band_step_bps: 5,
+            maximum_confidence_bps: 100,
+            maximum_oracle_age_seconds: 10,
+            sync_spread_bps: 0,
+            valid_until_slot: "2500",
+            bid_depth_atoms: depth.slice(0, 3).map(String),
+            ask_depth_atoms: depth.slice(0, 3).map(String),
+            maximum_exposure_atoms: "10000000",
+            remaining_exposure_atoms: "10000000",
+            oracle_health: "fresh",
+          }],
+          active_products: 1,
+        });
+      }
+      return new Response(null, { status: 404 });
+    },
+  });
+  let signed = 0;
+  const result = await client.marketMaking.start({
+    market: "sol/usdc",
+    product: "current",
+    spreadBps: 5,
+    size: "0.01 SOL",
+    duration: "10m",
+    signer: {
+      publicKey: makerWallet,
+      signTransaction: async (transaction) => {
+        signed += 1;
+        assert.equal(transaction, transactionBase64);
+        return transaction;
+      },
+    },
+  });
+
+  assert.equal(result.status, "confirmed");
+  assert.equal(result.market.label, "SOL/USDC");
+  assert.equal(result.base_asset.symbol, "SOL");
+  assert.equal(signed, 1);
+  assert.deepEqual(prepareBody, {
+    action: "upsert",
+    maker_wallet: makerWallet,
+    enabled: true,
+    async_only: false,
+    half_spread_bps: 5,
+    band_step_bps: 5,
+    max_conf_bps: 100,
+    max_oracle_dev_bps: 500,
+    max_oracle_age_secs: 10,
+    sync_spread_bps: 0,
+    max_exposure_base_atoms: "10000000",
+    bid_depth_base_atoms: depth.map(String),
+    ask_depth_base_atoms: depth.map(String),
+    valid_until_slot: "2500",
+  });
+  assert.equal(submitBody?.idempotency_key, prepared.maker_control_id);
+  assert.equal(result.maker_status.currents[0]?.valid_until_slot, "2500");
+
+  const signatureOnly = new Uint8Array(Buffer.from(transactionBase64, "base64"));
+  signatureOnly[1] = 9;
+  assert.doesNotThrow(() => verifySignedTransactionMessage(
+    transactionBase64,
+    Buffer.from(signatureOnly).toString("base64"),
+  ));
+  const messageByte = signatureOnly.length - 1;
+  signatureOnly[messageByte] = signatureOnly[messageByte]! ^ 1;
+  assert.throws(
+    () => verifySignedTransactionMessage(
+      transactionBase64,
+      Buffer.from(signatureOnly).toString("base64"),
+    ),
+    /message changed/,
   );
 });
 
