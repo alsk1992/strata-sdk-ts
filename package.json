@@ -1,6 +1,6 @@
 {
   "name": "@stratabook/sdk",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Official TypeScript SDK and terminal client for Strata and Sonar.",
   "type": "module",
   "license": "MIT OR Apache-2.0",
@@ -27,13 +27,15 @@
     }
   },
   "bin": {
-    "strata": "dist/src/cli.js"
+    "strata": "./dist/src/cli.js",
+    "strata-maker-conformance": "./dist/src/maker-conformance-cli.js"
   },
   "files": [
     "dist/src",
     "README.md",
     "LICENSE-APACHE",
-    "LICENSE-MIT"
+    "LICENSE-MIT",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",

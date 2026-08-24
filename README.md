@@ -320,6 +320,38 @@ MCP) use `statusAuthorizationPayload` / `reputationAuthorizationPayload` and
 submit the detached signature through `statusAuthorized` /
 `reputationAuthorized`.
 
+### One-command maker conformance
+
+Every deployment runs the non-broadcasting suite automatically. Anyone can run
+the exact same public black-box proof:
+
+```sh
+npx --yes @stratabook/sdk@0.2.10 strata-maker-conformance safe --pretty
+```
+
+It checks live market/mark readiness, maker status and reputation behavior,
+human `SOL` versus custody `WSOL` resolution, Strand and Current preparation in
+the SDK and hosted MCP, stateless MCP continuation tokens, native-v0 signer
+layout, lookup-table absence, and the 1,232-byte packet limit. It never signs,
+broadcasts, or prints prepared transactions or tokens.
+
+The explicitly funded lifecycle starts and stops Current through two separate
+MCP requests, repeats Strand through the SDK, keeps collateral observable while
+each product is live, and waits for automatic expiry:
+
+```sh
+npx --yes @stratabook/sdk@0.2.10 strata-maker-conformance funded \
+  --keypair /absolute/path/maker.json \
+  --confirm-funded-write RUN_FUNDED_MAINNET_CONFORMANCE --pretty
+```
+
+`full` additionally needs a different funded Vault owner and its registered
+session key. It executes isolated partial Current and Strand fills, then a
+mixed amount larger than both controls' combined exposure. The maker stream
+must attribute both products and the full execution proves a Sonar remainder
+was required. Public output still never reveals internal execution details.
+Run `strata-maker-conformance --help` for every bounded input.
+
 ## Vault lifecycle: prepare, owner-sign, submit
 
 Setup, deposits, withdrawals, session changes, withdrawal policy, and pause are
