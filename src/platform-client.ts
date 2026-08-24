@@ -1088,6 +1088,7 @@ export class StrataPlatformClient {
       prepared.transaction_base64,
     );
     decodeBase64(signedTransactionBase64);
+    verifySignedTransactionMessage(prepared.transaction_base64, signedTransactionBase64);
     return this.twapSubmit(marketId, {
       twapControlId: prepared.twap_control_id,
       signedTransactionBase64,
@@ -1646,6 +1647,7 @@ export class StrataPlatformClient {
       makerWallet,
       product,
       baseAsset,
+      marketLabel: market.label,
       currentSlot: BigInt(makerStatus.current_slot),
       markPriceAtoms: BigInt(mark.price_atoms_per_base_unit),
       tickSizeAtoms: BigInt(marketStatus.tick_size_atoms),
@@ -2132,6 +2134,7 @@ export class StrataPlatformClient {
       prepared.transaction_base64,
     );
     decodeBase64(signedTransactionBase64);
+    verifySignedTransactionMessage(prepared.transaction_base64, signedTransactionBase64);
     return this.orderSubmit(marketId, {
       orderControlId: prepared.order_control_id,
       signedTransactionBase64,
@@ -3287,12 +3290,23 @@ function makerDurationSlots(value: number | string | undefined): bigint {
   return BigInt(Math.ceil(seconds * 2.5));
 }
 
-function humanBaseAtoms(value: string, asset: PlatformAsset): bigint {
+function makerMarketBaseSymbol(label: string): string | undefined {
+  const [base, quote] = label.split("/", 2);
+  return base?.trim() && quote?.trim() ? base.trim() : undefined;
+}
+
+function humanBaseAtoms(value: string, asset: PlatformAsset, marketLabel: string): bigint {
   const match = /^([0-9]+)(?:\.([0-9]+))?(?:\s+([A-Za-z0-9._-]+))?$/.exec(value.trim());
-  if (!match) throw new TypeError(`size must be an exact ${asset.symbol} amount, for example 0.01 ${asset.symbol}`);
+  const marketSymbol = makerMarketBaseSymbol(marketLabel);
+  const displaySymbol = marketSymbol ?? asset.symbol;
+  if (!match) throw new TypeError(`size must be an exact ${displaySymbol} amount, for example 0.01 ${displaySymbol}`);
   const symbol = match[3];
-  if (symbol && symbol.toLowerCase() !== asset.symbol.toLowerCase()) {
-    throw new TypeError(`size is denominated in ${asset.symbol}, not ${symbol}`);
+  if (
+    symbol
+    && symbol.toLowerCase() !== asset.symbol.toLowerCase()
+    && symbol.toLowerCase() !== marketSymbol?.toLowerCase()
+  ) {
+    throw new TypeError(`size is denominated in ${displaySymbol}, not ${symbol}`);
   }
   const fraction = match[2] ?? "";
   if (fraction.length > asset.decimals) {
@@ -3321,11 +3335,21 @@ function makerQuickstartOperation(context: {
   readonly makerWallet: string;
   readonly product: PlatformMakerQuickstartProduct;
   readonly baseAsset: PlatformAsset;
+  readonly marketLabel: string;
   readonly currentSlot: bigint;
   readonly markPriceAtoms: bigint;
   readonly tickSizeAtoms: bigint;
 }): PlatformMakerStrandPrepareInput | PlatformMakerCurrentPrepareInput {
-  const { request, makerWallet, product, baseAsset, currentSlot, markPriceAtoms, tickSizeAtoms } = context;
+  const {
+    request,
+    makerWallet,
+    product,
+    baseAsset,
+    marketLabel,
+    currentSlot,
+    markPriceAtoms,
+    tickSizeAtoms,
+  } = context;
   const spreadBps = checkedInteger(request.spreadBps, "spreadBps", 1, 5_000);
   const maximumLevels = product === "strand" ? 16 : 8;
   const levels = checkedInteger(request.levels ?? 3, "levels", 1, maximumLevels);
@@ -3344,7 +3368,7 @@ function makerQuickstartOperation(context: {
   if (typeof request.asyncOnly !== "undefined" && typeof request.asyncOnly !== "boolean") {
     throw new TypeError("asyncOnly must be boolean");
   }
-  const sizeAtoms = humanBaseAtoms(request.size, baseAsset);
+  const sizeAtoms = humanBaseAtoms(request.size, baseAsset, marketLabel);
   const validUntilSlot = currentSlot + makerDurationSlots(request.duration);
   if (validUntilSlot > 18_446_744_073_709_551_615n) {
     throw new TypeError("duration exceeds the supported slot range");

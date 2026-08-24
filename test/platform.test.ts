@@ -1781,6 +1781,11 @@ test("starts a Current from human inputs and waits for exact chain-derived state
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("")}`;
   const market = (markets.markets as Array<Record<string, unknown>>)[0]!;
+  const baseAsset = (assets.assets as Array<Record<string, unknown>>)
+    .find((asset) => asset.asset_id === market.base_asset_id);
+  assert.ok(baseAsset);
+  baseAsset.symbol = "WSOL";
+  baseAsset.name = "Wrapped SOL";
   market.market_id = marketId;
   marketStatus.market_id = marketId;
   mark.market_id = marketId;
@@ -1869,12 +1874,13 @@ test("starts a Current from human inputs and waits for exact chain-derived state
   const transactionBase64 = Buffer.from(join(
     compact(1),
     new Uint8Array(64),
-    new Uint8Array([1, 0, 2]),
+    new Uint8Array([0x80, 1, 0, 2]),
     compact(staticKeys.length),
     ...staticKeys,
     recentBlockhash,
     compact(1),
     instruction,
+    compact(0),
   )).toString("base64");
   const prepared = {
     schema_version: 2,
@@ -1966,7 +1972,7 @@ test("starts a Current from human inputs and waits for exact chain-derived state
 
   assert.equal(result.status, "confirmed");
   assert.equal(result.market.label, "SOL/USDC");
-  assert.equal(result.base_asset.symbol, "SOL");
+  assert.equal(result.base_asset.symbol, "WSOL");
   assert.equal(signed, 1);
   assert.deepEqual(prepareBody, {
     action: "upsert",
@@ -2207,7 +2213,7 @@ test("executes a resting order with one signature after decoding and verifying t
     },
     signTransaction: async (transaction: string) => {
       assert.equal(transaction, nextTransaction);
-      return "BQYHCA==";
+      return transaction;
     },
   };
   const operation = {
@@ -2227,7 +2233,7 @@ test("executes a resting order with one signature after decoding and verifying t
   assert.equal(prepareBodies[0]?.action, "place");
   assert.equal(prepareBodies[0]?.session_public_key, sessionPublicKey);
   assert.equal("account_sequence" in (prepareBodies[0] ?? {}), false);
-  assert.equal(submitBody?.signed_transaction_base64, "BQYHCA==");
+  assert.equal(submitBody?.signed_transaction_base64, prepared.transaction_base64);
   assert.equal(receipt.status, "submitted");
 
   // A custom verifier still receives the operation and prepared transaction.
@@ -2244,6 +2250,21 @@ test("executes a resting order with one signature after decoding and verifying t
     },
   });
   assert.equal(verified, true);
+
+  // A custom signer may fill signature bytes, but it may never rebuild the
+  // exact message the SDK verified.
+  const mutatingSigner = {
+    ...signer,
+    signTransaction: async (transaction: string) => {
+      const wire = new Uint8Array(Buffer.from(transaction, "base64"));
+      wire[wire.length - 1] = wire[wire.length - 1]! ^ 1;
+      return Buffer.from(wire).toString("base64");
+    },
+  };
+  await assert.rejects(
+    client.orders.execute(marketId, { operation, signer: mutatingSigner }),
+    /message changed after verification/,
+  );
 
   // Built-in verifier refusals: a different side, the session as fee payer,
   // a session-signed system transfer, another market.
@@ -2342,7 +2363,14 @@ test("executes a bounded TWAP only after byte-exact authorization and transactio
     market_id: marketId,
     action: "place",
     twap_id: twapId,
-    transaction_base64: "AQIDBA==",
+    transaction_base64: Buffer.from(join(
+      new Uint8Array([1]),
+      new Uint8Array(64),
+      new Uint8Array([0x80, 1, 0, 0, 1]),
+      base58Decode(sessionPublicKey, 32, "sessionPublicKey"),
+      recentBlockhash,
+      new Uint8Array([0, 0]),
+    )).toString("base64"),
     recent_blockhash: base58Encode(recentBlockhash),
     last_valid_block_height: 400_000_000,
     expires_at_ms: expiresAtMs,
@@ -2391,7 +2419,7 @@ test("executes a bounded TWAP only after byte-exact authorization and transactio
       signTransaction: async (transaction) => {
         assert.equal(verified, true);
         assert.equal(transaction, prepared.transaction_base64);
-        return "BQYHCA==";
+        return transaction;
       },
     },
     verifyTransaction: ({ challenge: bound, operation, prepared: transaction, ownerWallet: owner }) => {
@@ -2409,7 +2437,7 @@ test("executes a bounded TWAP only after byte-exact authorization and transactio
   assert.deepEqual(signedMessages, []);
   assert.ok(authorization.length > 0);
   assert.equal(verified, true);
-  assert.equal(submitBody?.signed_transaction_base64, "BQYHCA==");
+  assert.equal(submitBody?.signed_transaction_base64, prepared.transaction_base64);
   assert.equal(receipt.twap_id, twapId);
   assert.equal(receipt.status, "submitted");
 });

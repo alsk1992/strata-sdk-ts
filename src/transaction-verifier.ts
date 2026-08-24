@@ -218,14 +218,14 @@ export interface MakerTransactionVerification {
 
 /**
  * Deny-by-default verification for direct maker-wallet controls. The packet
- * must contain one legacy instruction, require only the maker signature, bind
+ * must contain one native-v0 instruction, require only the maker signature, bind
  * the requested market where present, and encode exactly the requested maker
  * economics. The PDA bump is the only server-resolved byte.
  */
 export async function verifyMakerTransaction(context: MakerTransactionVerification): Promise<void> {
   const tx = decodeTransaction(context.prepared.transaction_base64);
-  if (tx.version !== "legacy" || tx.addressTableLookupCount !== 0) {
-    throw new StrataContractError("maker controls must be one legacy transaction");
+  if (tx.version !== 0 || tx.addressTableLookupCount !== 0) {
+    throw new StrataContractError("maker controls must be native v0 without lookup tables");
   }
   if (
     tx.numRequiredSignatures !== 1

@@ -243,7 +243,8 @@ await strata.marketMaking.stop({
 `stop` is idempotent and does not ask the wallet to sign when the product is
 already absent. A wallet bridge can split the same safe flow across
 `prepareStart` / `prepareStop` and `submitPrepared`; the private key never
-enters Strata.
+enters Strata. Maker controls are native v0 transactions, and both SDKs reject
+a signer that changes any verified message byte before submitting it.
 
 `StrataPlatformClient.marketMaking` also reads a maker's Strata liquidity in
 one market. Every read is public by wallet address — no signature, like every
@@ -342,6 +343,7 @@ const prepared = await platform.vault.prepareDeposit({
   sessionPublicKey: vaultSession.publicKey, // first time: registers the session too
 });
 const signed = await ownerWallet.signTransaction(prepared.transaction_base64);
+verifySignedTransactionMessage(prepared.transaction_base64, signed);
 const receipt = await platform.vault.submit({
   preparationId: prepared.preparation_id,
   signedTransactionBase64: signed,
@@ -351,7 +353,10 @@ const outcome = await platform.vault.submission(prepared.preparation_id); // sub
 ```
 
 Submission is idempotent per key, verifies the signed bytes are exactly the
-prepared transaction, and never lets Strata sign as the owner.
+prepared transaction, and never lets Strata sign as the owner. Every immutable
+wallet-facing preparation is a native v0 transaction with no lookup tables;
+the explicit post-sign comparison above catches any non-conforming signer
+before a network request is made.
 
 Who pays: an owner holding at least 0.01 SOL pays their own network fee
 (`sponsored: false`; Strata still submits). Below that, Strata pays the fee
