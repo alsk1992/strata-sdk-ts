@@ -1593,7 +1593,7 @@ export class StrataPlatformClient {
     const id = checkedMarketId(marketId);
     const wire = makerStrandPrepareWire(request);
     const response = platformMakerControlPrepareResponse(
-      await this.post(`/v2/markets/${id}/makers/strands/prepare`, wire.body),
+      await this.post(`/v2/markets/${id}/makers/strands/prepare?transaction_version=0`, wire.body),
     );
     assertMakerControlPrepare(response, id, wire.makerWallet, "strand", wire.action);
     return response;
@@ -1838,7 +1838,7 @@ export class StrataPlatformClient {
     const id = checkedMarketId(marketId);
     const wire = makerCurrentPrepareWire(request);
     const response = platformMakerControlPrepareResponse(
-      await this.post(`/v2/markets/${id}/makers/currents/prepare`, wire.body),
+      await this.post(`/v2/markets/${id}/makers/currents/prepare?transaction_version=0`, wire.body),
     );
     assertMakerControlPrepare(response, id, wire.makerWallet, "current", wire.action);
     return response;
