@@ -360,7 +360,7 @@ export interface PlatformMakerStrandModule {
 }
 
 export interface PlatformMakerCurrentModule {
-  /** Current upsert fails closed without a verified market reference; cancel remains available. */
+  /** Current upsert prices its bands from the market's live Strata mark. */
   prepare(
     marketId: string,
     request: PlatformMakerCurrentPrepareInput,
@@ -744,7 +744,7 @@ export class StrataPlatformClient {
     marketId: string,
     request: PlatformBookRequest = {},
   ): Promise<PlatformBookSnapshotResponse> {
-    await this.requireReadCapability("books.read", "http");
+    await this.requireReadCapability("market_data.book.snapshot", "http");
     const id = checkedMarketId(marketId);
     const query = depthQuery(request);
     const response = platformBookSnapshotResponse(
@@ -755,7 +755,7 @@ export class StrataPlatformClient {
   }
 
   private async feeSchedule(marketId: string): Promise<PlatformFeeScheduleResponse> {
-    await this.requireReadCapability("books.read", "http");
+    await this.requireReadCapability("fees.read", "http");
     const id = checkedMarketId(marketId);
     const response = platformFeeScheduleResponse(await this.get(`/v2/markets/${id}/fees`));
     assertMarket(response.market_id, id);
@@ -771,7 +771,7 @@ export class StrataPlatformClient {
   }
 
   private async marketStatus(marketId: string): Promise<PlatformMarketStatusResponse> {
-    await this.requireReadCapability("books.read", "http");
+    await this.requireReadCapability("markets.status.read", "http");
     const id = checkedMarketId(marketId);
     const response = platformMarketStatusResponse(await this.get(`/v2/markets/${id}/status`));
     assertMarket(response.market_id, id);
@@ -782,7 +782,7 @@ export class StrataPlatformClient {
     marketId: string,
     request: PlatformTradesRequest = {},
   ): Promise<PlatformTradesResponse> {
-    await this.requireReadCapability("books.read", "http");
+    await this.requireReadCapability("market_data.trades.read", "http");
     const id = checkedMarketId(marketId);
     const query = tradesQuery(request);
     const response = platformTradesResponse(
@@ -869,7 +869,7 @@ export class StrataPlatformClient {
   ): Promise<PlatformTwapChallengeResponse> {
     await this.requireCapability(
       request.action === "place" ? "algos.twap.place" : "algos.twap.cancel",
-      "submit",
+      request.action === "place" ? "submit" : "destructive",
     );
     const id = checkedMarketId(marketId);
     const body = twapOperationWire(request);
@@ -894,7 +894,7 @@ export class StrataPlatformClient {
       // authorization.
       await this.requireCapability(
         request.operation.action === "place" ? "algos.twap.place" : "algos.twap.cancel",
-        "submit",
+        request.operation.action === "place" ? "submit" : "destructive",
       );
       body = twapOperationWire(request.operation);
     } else {
@@ -1419,7 +1419,12 @@ export class StrataPlatformClient {
     handlers: PlatformMarketDataHandlers,
     options: PlatformMarketDataSubscriptionOptions = {},
   ): Promise<PlatformMarketDataSubscription> {
-    await this.requireReadCapability("books.read", "websocket");
+    await Promise.all([
+      this.requireReadCapability("market_data.book.stream", "websocket"),
+      this.requireReadCapability("market_data.bbo.stream", "websocket"),
+      this.requireReadCapability("market_data.trades.stream", "websocket"),
+      this.requireReadCapability("market_data.marks.read", "websocket"),
+    ]);
     return subscribePlatformMarketData(this.apiBase, checkedMarketId(marketId), handlers, options);
   }
 
@@ -1643,7 +1648,7 @@ export class StrataPlatformClient {
     handlers: PlatformAccountHandlers,
     options: PlatformAccountSubscribeOptions = {},
   ): Promise<PlatformAccountSubscription> {
-    await this.requireReadCapability("account.read", "websocket");
+    await this.requireReadCapability("account.stream", "websocket");
     const authorizedSigner = checkedAccountSigner(signer);
     const marketIds = await this.accountMarketIds(options.marketIds);
     const { marketIds: _marketIds, ...streamOptions } = options;
