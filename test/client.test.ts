@@ -412,6 +412,25 @@ test("binds execution to minimum output and verifies before session signing", as
   assert.deepEqual(calls, ["verify", "transaction"]);
   // The two-step payload validator remains available to challenge integrators.
   assert.ok(challenge.authorization_payload_base64.length > 0);
+
+  await assert.rejects(
+    client.executeQuote({
+      quote,
+      ownerWallet: owner,
+      accountSequence: 7n,
+      signer: {
+        publicKey: "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
+        signMessage: async () => new Uint8Array(64),
+        signTransaction: async (transaction) => {
+          const wire = new Uint8Array(Buffer.from(transaction, "base64"));
+          wire[wire.length - 1] = wire[wire.length - 1]! ^ 1;
+          return Buffer.from(wire).toString("base64");
+        },
+      },
+      verifyTransaction: () => undefined,
+    }),
+    /message changed after verification/,
+  );
 });
 
 function u64(value: string): Buffer {

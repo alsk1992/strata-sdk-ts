@@ -1,4 +1,7 @@
-import { verifyExecutionTransaction } from "./transaction-verifier.js";
+import {
+  verifyExecutionTransaction,
+  verifySignedTransactionMessage,
+} from "./transaction-verifier.js";
 import {
   DEFAULT_API_BASE,
   DEFAULT_MAXIMUM_TOLERANCE_BPS,
@@ -286,6 +289,7 @@ export class StrataClient {
     if (!validBase64(signedTransaction)) {
       throw new StrataContractError("session signer returned an invalid transaction");
     }
+    verifySignedTransactionMessage(prepared.transaction_base64, signedTransaction);
     const submitted = await this.executionSubmit({
       market: quote.market_id,
       executionId: prepared.execution_id,

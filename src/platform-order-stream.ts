@@ -7,7 +7,10 @@ import {
   StrataContractError,
 } from "./client.js";
 import { platformOrderCommandEvents } from "./platform-validation.js";
-import { verifyOrderTransaction } from "./transaction-verifier.js";
+import {
+  verifyOrderTransaction,
+  verifySignedTransactionMessage,
+} from "./transaction-verifier.js";
 import type {
   PlatformDeadManState,
   PlatformOrderChallengeInput,
@@ -488,6 +491,7 @@ export function connectPlatformOrderCommands(
     }
     const signedTransactionBase64 = await signer.signTransaction(prepared.transaction_base64);
     decodeBase64(signedTransactionBase64);
+    verifySignedTransactionMessage(prepared.transaction_base64, signedTransactionBase64);
     return { prepared, signedTransactionBase64 };
   };
 
