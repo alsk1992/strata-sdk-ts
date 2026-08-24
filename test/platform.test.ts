@@ -68,6 +68,29 @@ async function v2Fixture(name: string): Promise<Record<string, unknown>> {
   throw new Error(`missing v2 contract fixture ${name}`);
 }
 
+function addPlatformCapabilities(
+  discovery: Record<string, unknown>,
+  definitions: ReadonlyArray<{
+    id: string;
+    risk?: "read" | "prepare" | "submit" | "destructive";
+    transports: readonly ("http" | "websocket" | "mcp")[];
+  }>,
+): void {
+  const capabilities = discovery.capabilities as Array<Record<string, unknown>>;
+  for (const definition of definitions) {
+    const risk = definition.risk ?? "read";
+    capabilities.push({
+      id: definition.id,
+      risk,
+      required_scope: "test",
+      transports: definition.transports,
+      mcp_exposure: definition.transports.includes("mcp")
+        ? risk === "read" ? "read" : risk === "prepare" ? "prepare" : "submit"
+        : "none",
+    });
+  }
+}
+
 test("discovers the complete live-gated platform action graph", async () => {
   const graph = await v2Fixture("platform-action-graph");
   const client = new StrataPlatformClient({
@@ -286,6 +309,12 @@ test("shares one capability request across concurrent gated connections", async 
 
 test("reads the complete book, status, fee schedule, and recent trades by opaque market ID", async () => {
   const capabilities = await v2Fixture("platform-capabilities");
+  addPlatformCapabilities(capabilities, [
+    { id: "market_data.book.snapshot", transports: ["http"] },
+    { id: "fees.read", transports: ["http"] },
+    { id: "markets.status.read", transports: ["http"] },
+    { id: "market_data.trades.read", transports: ["http"] },
+  ]);
   const fixtures = new Map([
     ["book", await v2Fixture("book")],
     ["bbo", await v2Fixture("bbo")],
@@ -905,6 +934,9 @@ test("reads owner-scoped maker status with the external wallet signer", async ()
 
 test("authenticates and recovers sequenced private account streams", async () => {
   const capabilities = await v2Fixture("platform-capabilities");
+  addPlatformCapabilities(capabilities, [
+    { id: "account.stream", transports: ["websocket"] },
+  ]);
   const account = await v2Fixture("account");
   const sockets: FakeWebSocket[] = [];
   const views: PlatformAccountView[] = [];
@@ -1359,6 +1391,9 @@ test("authenticates and recovers the sequenced owner-only maker stream", async (
 
 test("rejects account readiness and stops reconnecting after signer failure", async () => {
   const capabilities = await v2Fixture("platform-capabilities");
+  addPlatformCapabilities(capabilities, [
+    { id: "account.stream", transports: ["websocket"] },
+  ]);
   const sockets: FakeWebSocket[] = [];
   const marketId = "market_33333333333333333333333333333333";
   const wallet = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
@@ -1398,6 +1433,12 @@ test("rejects account readiness and stops reconnecting after signer failure", as
 
 test("applies sequenced book changes and removes zero-sized prices", async () => {
   const capabilities = await v2Fixture("platform-capabilities");
+  addPlatformCapabilities(capabilities, [
+    { id: "market_data.book.stream", transports: ["websocket"] },
+    { id: "market_data.bbo.stream", transports: ["websocket"] },
+    { id: "market_data.trades.stream", transports: ["websocket"] },
+    { id: "market_data.marks.read", transports: ["websocket"] },
+  ]);
   const snapshot = { type: "book_snapshot", ...(await v2Fixture("book")) };
   const sockets: FakeWebSocket[] = [];
   const views: PlatformBookView[] = [];
@@ -1710,6 +1751,37 @@ test("prepares and submits exact Strand and Current maker controls", async () =>
     }),
     /exactly 16/,
   );
+});
+
+test("uses the live destructive capability classification for TWAP cancellation", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  addPlatformCapabilities(capabilities, [{
+    id: "algos.twap.cancel",
+    risk: "destructive",
+    transports: ["http", "mcp"],
+  }]);
+  const challenge = await v2Fixture("twap-challenge");
+  challenge.action = "cancel";
+  const marketId = challenge.market_id as string;
+  let posted = false;
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      posted = true;
+      return Response.json(challenge);
+    },
+  });
+
+  const result = await client.algos.challenge(marketId, {
+    action: "cancel",
+    ownerWallet: "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL",
+    sessionPublicKey: "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
+    twapId: challenge.twap_id as string,
+  });
+  assert.equal(posted, true);
+  assert.equal(result.action, "cancel");
 });
 
 test("executes a resting order with one signature after decoding and verifying the transaction", async () => {

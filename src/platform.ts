@@ -1767,7 +1767,7 @@ export interface PlatformMakerCurrentStatus {
   readonly ask_depth_atoms: readonly AtomicString[];
   readonly maximum_exposure_atoms: AtomicString;
   readonly remaining_exposure_atoms: AtomicString;
-  /** Freshness class of the market oracle the Current settles against. */
+  /** Freshness class of the live Strata mark used to price this Current. */
   readonly oracle_health: PlatformOracleHealth;
 }
 

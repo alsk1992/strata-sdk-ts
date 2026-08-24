@@ -235,7 +235,7 @@ await makerStream.ready;
 `status` reports resting firm orders by side, the intent record with its live
 remaining fill budget, signed-quote lane eligibility and the maker's own live
 quotes, each Strand and Current with levels or bands, remaining exposure,
-expiry against the current slot, and oracle health, plus armed dead-man guards.
+expiry against the current slot, and live Strata mark health, plus armed dead-man guards.
 The maker stream starts from a signed snapshot of that same status and recent
 maker-side fills tagged with their product (`firm_order`, `intent`, `strand`,
 `current`), then applies contiguous `maker_fill` and `maker_status` events and
@@ -243,6 +243,36 @@ recovers any gap from a fresh signed snapshot. Signer-less adapters (terminal,
 MCP) use `statusAuthorizationPayload` / `reputationAuthorizationPayload` and
 submit the detached signature through `statusAuthorized` /
 `reputationAuthorized`.
+
+### Manage Strands and Currents
+
+Both controls use the same custody-safe boundary: ask Strata for the exact
+transaction, verify and sign it outside Strata, then submit it with a stable
+idempotency key.
+
+```ts
+const prepared = await strata.marketMaking.strand.prepare(market.market_id, {
+  action: "cancel",
+  makerWallet,
+});
+const signedTransactionBase64 = await makerSigner.signTransaction(
+  prepared.transaction_base64,
+);
+await strata.marketMaking.strand.submit(market.market_id, {
+  makerControlId: prepared.maker_control_id,
+  signedTransactionBase64,
+  idempotencyKey: "strand-cancel-1",
+});
+
+const current = await strata.marketMaking.current.prepare(market.market_id, {
+  action: "cancel",
+  makerWallet,
+});
+```
+
+Use the corresponding `upsert` actions to create or update them. Current bands
+are priced from the market's live Strata mark; no separate oracle publisher is
+required. All sizes and exposure limits are base-asset atoms.
 
 ## Vault lifecycle: prepare, owner-sign, submit
 
