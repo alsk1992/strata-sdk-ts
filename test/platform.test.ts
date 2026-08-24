@@ -1578,7 +1578,8 @@ test("exposes resting-order prepare, idempotent submit, and durable status", asy
   const client = new StrataPlatformClient({
     apiBase: "https://example.test",
     fetch: async (input, init) => {
-      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      const url = new URL(input instanceof Request ? input.url : input);
+      const path = url.pathname;
       if (path.endsWith("/capabilities")) return Response.json(capabilities);
       requests.push({ path, body: JSON.parse(String(init?.body)) });
       if (path.endsWith("/challenge")) return Response.json(challenge);
@@ -1665,10 +1666,11 @@ test("prepares and submits exact Strand and Current maker controls", async () =>
   const client = new StrataPlatformClient({
     apiBase: "https://example.test",
     fetch: async (input, init) => {
-      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      const url = new URL(input instanceof Request ? input.url : input);
+      const path = url.pathname;
       if (path.endsWith("/capabilities")) return Response.json(capabilities);
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      requests.push({ path, body });
+      requests.push({ path: `${path}${url.search}`, body });
       const product = path.includes("/strands/") ? "strand" : "current";
       const action = path.includes("/strands/") ? "strand_upsert" : "current_cancel";
       if (path.endsWith("/prepare")) {
@@ -1728,8 +1730,8 @@ test("prepares and submits exact Strand and Current maker controls", async () =>
   assert.equal(current.action, "current_cancel");
   assert.equal(receipt.status, "submitted");
   assert.deepEqual(requests.map(({ path }) => path), [
-    `/v2/markets/${marketId}/makers/strands/prepare`,
-    `/v2/markets/${marketId}/makers/currents/prepare`,
+    `/v2/markets/${marketId}/makers/strands/prepare?transaction_version=0`,
+    `/v2/markets/${marketId}/makers/currents/prepare?transaction_version=0`,
     `/v2/markets/${marketId}/makers/strands/submit`,
   ]);
   assert.equal(requests[0]?.body.mid_price_atoms, "150000000");
