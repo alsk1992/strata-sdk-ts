@@ -3,10 +3,16 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.9
+
+- Correct the maker preparation terminology: `transaction_version=0`
+  requests a browser-safe native-v0 Solana transaction, not a legacy
+  transaction. Runtime behavior is unchanged from 0.2.8.
+
 ## 0.2.8
 
-- Request legacy Solana transactions from Strand and Current prepare
-  endpoints so external wallet signing works across legacy-only wallets.
+- Request browser-safe native-v0 Solana transactions from Strand and Current
+  prepare endpoints for external wallet signing.
 
 ## 0.2.7
 
