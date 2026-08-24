@@ -1899,6 +1899,108 @@ export interface PlatformMakerControlSubmitResponse {
   readonly status: "submitted";
 }
 
+/** Human-facing maker product used by the opinionated quickstart flow. */
+export type PlatformMakerQuickstartProduct = "strand" | "current";
+export type PlatformMakerQuickstartSide = "both" | "buy" | "sell";
+
+/**
+ * Transaction-only signer for maker controls. The private key remains in the
+ * wallet, HSM, or agent-owned signer; Strata only receives the signed packet.
+ */
+export interface PlatformMakerTransactionSigner {
+  readonly publicKey: string;
+  signTransaction(transactionBase64: string): Promise<string>;
+}
+
+/**
+ * The simple market-maker contract. `spreadBps` is the distance from Strata's
+ * mark to the first quote on each side. `size` is a decimal base-asset amount,
+ * optionally suffixed by its symbol (for example `0.01 SOL`).
+ */
+export interface PlatformMakerQuickstartPrepareInput {
+  /** Public market label (`SOL/USDC`) or opaque market ID. */
+  readonly market: string;
+  readonly product: PlatformMakerQuickstartProduct;
+  readonly makerWallet: string;
+  readonly spreadBps: number;
+  readonly size: string;
+  /** Defaults to `10m`; accepts seconds or `30s`, `10m`, `2h`, `1d`. */
+  readonly duration?: number | string;
+  /** Defaults to three; capped by the product (Strand 16, Current 8). */
+  readonly levels?: number;
+  /** Distance between later levels; defaults to `spreadBps`. */
+  readonly levelStepBps?: number;
+  readonly side?: PlatformMakerQuickstartSide;
+  /** Defaults to false so the quote is immediately executable. */
+  readonly asyncOnly?: boolean;
+}
+
+export interface PlatformMakerQuickstartPrepared {
+  readonly market: PlatformMarket;
+  readonly base_asset: PlatformAsset;
+  readonly product: PlatformMakerQuickstartProduct;
+  readonly operation: PlatformMakerStrandPrepareInput | PlatformMakerCurrentPrepareInput;
+  readonly prepared: PlatformMakerControlPrepareResponse;
+}
+
+export type PlatformMakerStartInput = Omit<
+  PlatformMakerQuickstartPrepareInput,
+  "makerWallet"
+> & {
+  readonly signer: PlatformMakerTransactionSigner;
+  /** Defaults to 45 seconds. */
+  readonly confirmationTimeoutMs?: number;
+  /** Defaults to 500ms. */
+  readonly confirmationPollMs?: number;
+};
+
+export interface PlatformMakerStopPrepareInput {
+  readonly market: string;
+  readonly product: PlatformMakerQuickstartProduct;
+  readonly makerWallet: string;
+}
+
+export type PlatformMakerStopInput = Omit<PlatformMakerStopPrepareInput, "makerWallet"> & {
+  readonly signer: PlatformMakerTransactionSigner;
+  readonly confirmationTimeoutMs?: number;
+  readonly confirmationPollMs?: number;
+};
+
+/** A chain-observed result, not merely a broadcast acknowledgement. */
+export interface PlatformMakerQuickstartResult extends PlatformMakerQuickstartPrepared {
+  readonly receipt: PlatformMakerControlSubmitResponse;
+  readonly status: "confirmed";
+  readonly maker_status: PlatformMakerStatusResponse;
+}
+
+export interface PlatformMakerStopPrepared {
+  readonly market: PlatformMarket;
+  readonly product: PlatformMakerQuickstartProduct;
+  readonly operation: PlatformMakerStrandPrepareInput | PlatformMakerCurrentPrepareInput;
+  readonly prepared: PlatformMakerControlPrepareResponse;
+}
+
+export interface PlatformMakerSubmitPreparedInput {
+  readonly prepared: PlatformMakerQuickstartPrepared | PlatformMakerStopPrepared;
+  readonly signedTransactionBase64: string;
+  /** Defaults to the opaque maker control ID. */
+  readonly idempotencyKey?: string;
+  readonly confirmationTimeoutMs?: number;
+  readonly confirmationPollMs?: number;
+}
+
+export interface PlatformMakerStopResult {
+  readonly market: PlatformMarket;
+  readonly product: PlatformMakerQuickstartProduct;
+  readonly operation: PlatformMakerStrandPrepareInput | PlatformMakerCurrentPrepareInput;
+  readonly prepared: PlatformMakerControlPrepareResponse | null;
+  readonly receipt: PlatformMakerControlSubmitResponse | null;
+  readonly status: "confirmed";
+  readonly maker_status: PlatformMakerStatusResponse;
+  /** True when chain-derived state already showed the product absent. */
+  readonly already_stopped: boolean;
+}
+
 export type PlatformMakerProduct = "firm_order" | "intent" | "strand" | "current";
 
 /** One maker-side fill: the sanitized settlement view plus the maker product that produced it. */

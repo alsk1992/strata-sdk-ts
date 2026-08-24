@@ -210,8 +210,43 @@ console.log(account.open_orders.length, "open orders", account.recent_fills.leng
 
 ## Market making
 
-`StrataPlatformClient.marketMaking` reads a maker's Strata liquidity in one
-market. Every read is public by wallet address — no signature, like every
+The simple path needs only the market, product, spread, total base size, and an
+external transaction signer. It resolves the public IDs and decimals, reads the
+fresh Strata mark and tick grid, builds the product's fixed arrays and safety
+bounds, verifies every transaction field before signing, and returns only after
+the chain-derived maker state matches:
+
+```ts
+const makerSigner = {
+  publicKey: makerWallet,
+  signTransaction: signWithMakerWallet,
+};
+
+const live = await strata.marketMaking.start({
+  market: "SOL/USDC",
+  product: "current", // or "strand"
+  spreadBps: 5,       // distance from Strata mark to the first level
+  size: "0.01 SOL",  // total size on each enabled side
+  duration: "10m",   // defaults to 10m
+  signer: makerSigner,
+});
+
+console.log(live.status, live.maker_status.currents);
+
+await strata.marketMaking.stop({
+  market: "SOL/USDC",
+  product: "current",
+  signer: makerSigner,
+});
+```
+
+`stop` is idempotent and does not ask the wallet to sign when the product is
+already absent. A wallet bridge can split the same safe flow across
+`prepareStart` / `prepareStop` and `submitPrepared`; the private key never
+enters Strata.
+
+`StrataPlatformClient.marketMaking` also reads a maker's Strata liquidity in
+one market. Every read is public by wallet address — no signature, like every
 other read (a signer is accepted; only its public key is used); nothing about
 other makers, takers, or where liquidity is sourced is ever returned.
 
@@ -232,6 +267,46 @@ const makerStream = await strata.marketMaking.subscribe(market.market_id, makerW
 await makerStream.ready;
 ```
 
+For advanced strategies, the low-level Strand and Current controls expose every
+on-chain field through the same externally signed prepare-then-submit flow:
+
+```ts
+const prepared = await strata.marketMaking.current.prepare(market.market_id, {
+  action: "upsert",
+  makerWallet,
+  enabled: true,
+  asyncOnly: false,
+  halfSpreadBps: 5,
+  bandStepBps: 3,
+  maxConfidenceBps: 100,
+  maxOracleDeviationBps: 500,
+  maxOracleAgeSeconds: 10,
+  syncSpreadBps: 1,
+  maxExposureBaseAtoms: "1000000000",
+  bidDepthBaseAtoms: ["100000000", ...Array(7).fill("0")],
+  askDepthBaseAtoms: ["100000000", ...Array(7).fill("0")],
+  validUntilSlot: "0",
+});
+
+// Verify and sign prepared.transaction_base64 with makerWallet, then:
+await strata.marketMaking.current.submit(market.market_id, {
+  makerControlId: prepared.maker_control_id,
+  signedTransactionBase64,
+  idempotencyKey: "current-sol-usdc-1",
+});
+```
+
+The equivalent Strand methods are `marketMaking.strand.prepare` and
+`marketMaking.strand.submit`, supporting upsert, recenter, enable/disable, and
+cancel. Current prices from Strata's live mark; it does not need a separate
+publisher transaction.
+
+Initialize the market Vault if needed, activate the control, then fund it with
+`vault.prepareDeposit` and `vault.submit`. Available collateral remains in the
+market UserAccount while at least one Strand or Current is live. It returns to
+the canonical Vault balance after the final control is disabled, exhausted,
+expired, or cancelled.
+
 `status` reports resting firm orders by side, the intent record with its live
 remaining fill budget, signed-quote lane eligibility and the maker's own live
 quotes, each Strand and Current with levels or bands, remaining exposure,
@@ -243,36 +318,6 @@ recovers any gap from a fresh signed snapshot. Signer-less adapters (terminal,
 MCP) use `statusAuthorizationPayload` / `reputationAuthorizationPayload` and
 submit the detached signature through `statusAuthorized` /
 `reputationAuthorized`.
-
-### Manage Strands and Currents
-
-Both controls use the same custody-safe boundary: ask Strata for the exact
-transaction, verify and sign it outside Strata, then submit it with a stable
-idempotency key.
-
-```ts
-const prepared = await strata.marketMaking.strand.prepare(market.market_id, {
-  action: "cancel",
-  makerWallet,
-});
-const signedTransactionBase64 = await makerSigner.signTransaction(
-  prepared.transaction_base64,
-);
-await strata.marketMaking.strand.submit(market.market_id, {
-  makerControlId: prepared.maker_control_id,
-  signedTransactionBase64,
-  idempotencyKey: "strand-cancel-1",
-});
-
-const current = await strata.marketMaking.current.prepare(market.market_id, {
-  action: "cancel",
-  makerWallet,
-});
-```
-
-Use the corresponding `upsert` actions to create or update them. Current bands
-are priced from the market's live Strata mark; no separate oracle publisher is
-required. All sizes and exposure limits are base-asset atoms.
 
 ## Vault lifecycle: prepare, owner-sign, submit
 

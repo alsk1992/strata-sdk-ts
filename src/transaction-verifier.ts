@@ -25,6 +25,9 @@ import type {
   PlatformOrderBatchOperation,
   PlatformTradeSide,
   PlatformRestingOrderType,
+  PlatformMakerControlPrepareResponse,
+  PlatformMakerCurrentPrepareInput,
+  PlatformMakerStrandPrepareInput,
   PlatformTwapPrepareResponse,
 } from "./platform.js";
 import type { ExecutionPrepareResponse } from "./types.js";
@@ -163,6 +166,198 @@ export function decodeTransaction(transactionBase64: string): DecodedTransaction
     instructions,
     addressTableLookupCount,
   };
+}
+
+/**
+ * A wallet may fill transaction signatures, but it must not replace the
+ * message the SDK verified. This comparison is byte-exact and works for any
+ * signature count without needing an RPC or Solana dependency.
+ */
+export function verifySignedTransactionMessage(
+  preparedTransactionBase64: string,
+  signedTransactionBase64: string,
+): void {
+  const prepared = transactionMessageBytes(preparedTransactionBase64);
+  const signed = transactionMessageBytes(signedTransactionBase64);
+  if (
+    prepared.length !== signed.length
+    || prepared.some((byte, index) => byte !== signed[index])
+  ) {
+    throw new StrataContractError("signed transaction message changed after verification");
+  }
+}
+
+function transactionMessageBytes(transactionBase64: string): Uint8Array {
+  const bytes = decodeBase64(transactionBase64);
+  let offset = 0;
+  let signatureCount = 0;
+  let shift = 0;
+  for (let index = 0; index < 3; index += 1) {
+    const byte = bytes[offset];
+    if (byte === undefined) throw new StrataContractError("transaction is truncated");
+    offset += 1;
+    signatureCount |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) {
+      const messageOffset = offset + signatureCount * 64;
+      if (messageOffset >= bytes.length) {
+        throw new StrataContractError("transaction is truncated");
+      }
+      return bytes.subarray(messageOffset);
+    }
+    shift += 7;
+  }
+  throw new StrataContractError("transaction length prefix is invalid");
+}
+
+export interface MakerTransactionVerification {
+  readonly marketId: string;
+  readonly makerWallet: string;
+  readonly operation: PlatformMakerStrandPrepareInput | PlatformMakerCurrentPrepareInput;
+  readonly prepared: PlatformMakerControlPrepareResponse;
+}
+
+/**
+ * Deny-by-default verification for direct maker-wallet controls. The packet
+ * must contain one legacy instruction, require only the maker signature, bind
+ * the requested market where present, and encode exactly the requested maker
+ * economics. The PDA bump is the only server-resolved byte.
+ */
+export async function verifyMakerTransaction(context: MakerTransactionVerification): Promise<void> {
+  const tx = decodeTransaction(context.prepared.transaction_base64);
+  if (tx.version !== "legacy" || tx.addressTableLookupCount !== 0) {
+    throw new StrataContractError("maker controls must be one legacy transaction");
+  }
+  if (
+    tx.numRequiredSignatures !== 1
+    || tx.signatureCount !== 1
+    || tx.staticAccountKeys[0] !== context.makerWallet
+    || tx.numReadonlySigned !== 0
+  ) {
+    throw new StrataContractError("maker control must require only the maker wallet");
+  }
+  if (tx.recentBlockhash !== context.prepared.recent_blockhash) {
+    throw new StrataContractError("prepared maker blockhash does not match");
+  }
+  if (tx.instructions.length !== 1) {
+    throw new StrataContractError("maker control must contain exactly one instruction");
+  }
+  const instruction = tx.instructions[0]!;
+  if (instruction.accountIndexes[0] !== 0) {
+    throw new StrataContractError("maker wallet is not the instruction signer");
+  }
+  const program = tx.staticAccountKeys[instruction.programIdIndex];
+  if (!program || WELL_KNOWN_PROGRAMS.has(program)) {
+    throw new StrataContractError("maker control targets an invalid program");
+  }
+  const data = instruction.data;
+  const operation = context.operation;
+  const action = context.prepared.action;
+  const expectedTag = ({
+    strand_upsert: 41,
+    strand_recenter: 42,
+    strand_cancel: 43,
+    strand_set_enabled: 44,
+    current_upsert: 47,
+    current_cancel: 48,
+  } as const)[action];
+  if (data[0] !== expectedTag) throw new StrataContractError("maker instruction action changed");
+
+  if (action === "strand_upsert" && operation.action === "upsert" && "midPriceAtoms" in operation) {
+    if (data.length !== 353) throw new StrataContractError("Strand upsert has an invalid length");
+    await verifyMakerMarket(tx, instruction, context.marketId);
+    expectU8(data, 1, Number(operation.enabled) | (Number(operation.asyncOnly) << 1), "Strand flags");
+    expectU16(data, 3, operation.syncSpreadTicks, "Strand sync spread");
+    expectU64(data, 9, operation.midPriceAtoms, "Strand mid price");
+    expectU64(data, 17, operation.maxExposureBaseAtoms, "Strand exposure");
+    operation.bidOffsetsTicks.forEach((value, index) => expectU16(data, 25 + index * 2, value, "Strand bid offset"));
+    operation.askOffsetsTicks.forEach((value, index) => expectU16(data, 57 + index * 2, value, "Strand ask offset"));
+    operation.bidSizesBaseAtoms.forEach((value, index) => expectU64(data, 89 + index * 8, value, "Strand bid size"));
+    operation.askSizesBaseAtoms.forEach((value, index) => expectU64(data, 217 + index * 8, value, "Strand ask size"));
+    expectU64(data, 345, operation.validUntilSlot, "Strand expiry");
+    return;
+  }
+  if (action === "strand_recenter" && operation.action === "recenter") {
+    if (data.length !== 17) throw new StrataContractError("Strand recenter has an invalid length");
+    expectU64(data, 1, operation.newMidPriceAtoms, "Strand mid price");
+    expectU64(data, 9, operation.validUntilSlot, "Strand expiry");
+    return;
+  }
+  if (action === "strand_set_enabled" && operation.action === "set_enabled") {
+    if (data.length !== 2) throw new StrataContractError("Strand enable has an invalid length");
+    expectU8(data, 1, Number(operation.enabled), "Strand enabled state");
+    return;
+  }
+  if (action === "current_upsert" && operation.action === "upsert" && "halfSpreadBps" in operation) {
+    if (data.length !== 161) throw new StrataContractError("Current upsert has an invalid length");
+    await verifyMakerMarket(tx, instruction, context.marketId);
+    expectU8(data, 1, Number(operation.enabled) | (Number(operation.asyncOnly) << 1), "Current flags");
+    expectU16(data, 3, operation.halfSpreadBps, "Current spread");
+    expectU16(data, 5, operation.bandStepBps, "Current band step");
+    expectU16(data, 7, operation.maxConfidenceBps, "Current confidence bound");
+    expectU16(data, 9, operation.maxOracleDeviationBps, "Current deviation bound");
+    expectU32(data, 11, operation.maxOracleAgeSeconds, "Current mark age");
+    expectU16(data, 15, operation.syncSpreadBps, "Current sync spread");
+    expectU64(data, 17, operation.maxExposureBaseAtoms, "Current exposure");
+    operation.bidDepthBaseAtoms.forEach((value, index) => expectU64(data, 25 + index * 8, value, "Current bid depth"));
+    operation.askDepthBaseAtoms.forEach((value, index) => expectU64(data, 89 + index * 8, value, "Current ask depth"));
+    expectU64(data, 153, operation.validUntilSlot, "Current expiry");
+    return;
+  }
+  if (
+    (action === "strand_cancel" || action === "current_cancel")
+    && operation.action === "cancel"
+  ) {
+    if (data.length !== 1 || instruction.accountIndexes.length !== 3) {
+      throw new StrataContractError("maker cancellation has an invalid shape");
+    }
+    const rentReceiver = tx.staticAccountKeys[instruction.accountIndexes[2]!];
+    if (rentReceiver !== context.makerWallet) {
+      throw new StrataContractError("maker rent receiver changed");
+    }
+    return;
+  }
+  throw new StrataContractError("prepared maker action does not match the requested operation");
+}
+
+async function verifyMakerMarket(
+  tx: DecodedTransaction,
+  instruction: DecodedInstruction,
+  expectedMarketId: string,
+): Promise<void> {
+  const market = tx.staticAccountKeys[instruction.accountIndexes[1]!];
+  if (!market || await opaqueProductId("market", market) !== expectedMarketId) {
+    throw new StrataContractError("maker transaction touches another market");
+  }
+}
+
+function expectU8(data: Uint8Array, offset: number, expected: number, field: string): void {
+  if (data[offset] !== expected) throw new StrataContractError(`${field} changed`);
+}
+
+function expectU16(data: Uint8Array, offset: number, expected: number, field: string): void {
+  if (offset + 2 > data.length || new DataView(data.buffer, data.byteOffset + offset, 2).getUint16(0, true) !== expected) {
+    throw new StrataContractError(`${field} changed`);
+  }
+}
+
+function expectU32(data: Uint8Array, offset: number, expected: number, field: string): void {
+  if (offset + 4 > data.length || new DataView(data.buffer, data.byteOffset + offset, 4).getUint32(0, true) !== expected) {
+    throw new StrataContractError(`${field} changed`);
+  }
+}
+
+function expectU64(
+  data: Uint8Array,
+  offset: number,
+  expected: string | bigint,
+  field: string,
+): void {
+  if (
+    offset + 8 > data.length
+    || new DataView(data.buffer, data.byteOffset + offset, 8).getBigUint64(0, true) !== BigInt(expected)
+  ) {
+    throw new StrataContractError(`${field} changed`);
+  }
 }
 
 interface DelegatedInstruction {
