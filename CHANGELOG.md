@@ -3,6 +3,16 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.10
+
+- Add the `strata-maker-conformance` binary and reusable safe, funded, and
+  full conformance functions. Safe mode verifies live SDK/MCP maker reads,
+  human-size resolution, stateless preparation tokens, and native-v0 packets
+  without broadcasting. Funded mode proves Current and Strand lifecycle,
+  collateral stability, cancellation, and expiry. Full mode adds isolated
+  partial fills and a mixed execution that requires Strand, Current, and a
+  Sonar remainder while exposing only the maker's own product attribution.
+
 ## 0.2.9
 
 - Correct the maker preparation terminology: `transaction_version=0`

@@ -11,3 +11,4 @@ export * from "./platform-stream.js";
 export * from "./types.js";
 export * from "./transaction-verifier.js";
 export * from "./session-signer.js";
+export * from "./maker-conformance.js";
