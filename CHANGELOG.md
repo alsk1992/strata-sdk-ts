@@ -3,6 +3,13 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.13
+
+- Add `generateSessionKeypair`, a Web Crypto-backed helper that returns a
+  Solana-compatible public/secret pair for secure local session onboarding.
+- Coordinate the release with MCP's private local pairing flow. Existing API
+  and wire-contract behavior is unchanged.
+
 ## 0.2.12
 
 - Coordinated release for MCP 0.2.12's client-neutral, direct-use onboarding.

@@ -326,7 +326,7 @@ Every deployment runs the non-broadcasting suite automatically. Anyone can run
 the exact same public black-box proof:
 
 ```sh
-npx --yes --package @stratabook/sdk@0.2.12 strata-maker-conformance safe --pretty
+npx --yes --package @stratabook/sdk@0.2.13 strata-maker-conformance safe --pretty
 ```
 
 It checks live market/mark readiness, maker status and reputation behavior,
@@ -340,7 +340,7 @@ MCP requests, repeats Strand through the SDK, keeps collateral observable while
 each product is live, and waits for automatic expiry:
 
 ```sh
-npx --yes --package @stratabook/sdk@0.2.12 strata-maker-conformance funded \
+npx --yes --package @stratabook/sdk@0.2.13 strata-maker-conformance funded \
   --keypair /absolute/path/maker.json \
   --confirm-funded-write RUN_FUNDED_MAINNET_CONFORMANCE --pretty
 ```
@@ -436,7 +436,7 @@ match. Pass `verifyTransaction` to enforce a stricter owner policy instead. MCP
 exposes the same one-signature prepare and submit when the corresponding live
 capabilities are available.
 
-## Session signer: paste the key, trade
+## Session signer: generate locally, trade
 
 A bot needs the session key the owner registered (from the app's **Agents**
 page, `strata session-keygen` + `vault-setup`, or the first deposit).
@@ -446,13 +446,16 @@ helper accepts — Ed25519 via Web Crypto, no Solana SDK, and transaction signin
 writes only the session's own signature slot:
 
 ```ts
-import { sessionSignerFromSecretKey } from "@stratabook/sdk";
+import { generateSessionKeypair, sessionSignerFromSecretKey } from "@stratabook/sdk";
 
-const signer = await sessionSignerFromSecretKey(process.env.STRATA_SESSION_SECRET_KEY!);
-// optionally pin the expected public key: sessionSignerFromSecretKey(secret, "9Uu7…")
+const keypair = await generateSessionKeypair();
+// Register keypair.publicKey once with the owner wallet.
+const signer = await sessionSignerFromSecretKey(keypair.secretKey, keypair.publicKey);
 ```
 
-The key never leaves the process; the SDK never transmits or stores it.
+The key never leaves the process; the SDK never transmits or stores it. MCP
+users normally run `npx -y @stratabook/mcp connect`, which performs this local
+generation and wallet handoff without exposing the secret.
 
 ## Resting orders
 

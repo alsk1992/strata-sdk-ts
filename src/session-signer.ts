@@ -1,18 +1,25 @@
 /**
  * A ready-made Vault session signer from a session secret key.
  *
- * The API-sessions page (and `strata vault-setup`) hand the owner a session
- * secret key once; a bot pastes it here and gets the `StrataSessionSigner`
- * every one-call helper accepts (`orders.execute`, `algos.execute`,
- * `executeQuote`, the order-command channel). No Solana SDK is needed: Ed25519
- * comes from Web Crypto (Node 20+, modern browsers), and transaction signing
- * writes the session's signature into the exact slot the prepared transaction
- * left empty for it — nothing else in the bytes changes.
+ * A local credential loader or managed integration supplies the secret and
+ * gets the `StrataSessionSigner` every one-call helper accepts
+ * (`orders.execute`, `algos.execute`, `executeQuote`, the order-command
+ * channel). No Solana SDK is needed: Ed25519 comes from Web Crypto (Node 20+,
+ * modern browsers), and transaction signing writes the session's signature
+ * into the exact slot the prepared transaction left empty for it — nothing
+ * else in the bytes changes.
  *
  * The key never leaves the process; the SDK never transmits or stores it.
  */
 import { StrataContractError, base58Decode, base58Encode, decodeBase64, encodeBase64 } from "./client.js";
 import type { StrataSessionSigner } from "./types.js";
+
+export interface GeneratedSessionKeypair {
+  /** Solana-compatible base58 Ed25519 public key registered by the owner wallet. */
+  readonly publicKey: string;
+  /** Solana-compatible base58 seed + public key. Keep this on the agent's machine. */
+  readonly secretKey: string;
+}
 
 /** PKCS#8 prefix for a raw 32-byte Ed25519 seed (RFC 8410). */
 const PKCS8_ED25519_PREFIX = Uint8Array.from([
@@ -28,6 +35,41 @@ function subtle(): SubtleCrypto {
 function base64UrlToBytes(value: string): Uint8Array {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (value.length % 4)) % 4);
   return decodeBase64(padded);
+}
+
+/**
+ * Generate a Solana-compatible session key pair with Web Crypto.
+ *
+ * This works in Node 20+ and modern browsers, requires no Solana dependency,
+ * and returns the same 64-byte `seed || public key` secret representation
+ * accepted by `sessionSignerFromSecretKey`.
+ */
+export async function generateSessionKeypair(): Promise<GeneratedSessionKeypair> {
+  const generated = await subtle().generateKey(
+    { name: "Ed25519" },
+    true,
+    ["sign", "verify"],
+  );
+  if (!("privateKey" in generated) || !("publicKey" in generated)) {
+    throw new StrataContractError("session key generation did not return a key pair");
+  }
+  const privateJwk = await subtle().exportKey("jwk", generated.privateKey);
+  const publicJwk = await subtle().exportKey("jwk", generated.publicKey);
+  if (typeof privateJwk.d !== "string" || typeof publicJwk.x !== "string") {
+    throw new StrataContractError("session key export failed");
+  }
+  const seed = base64UrlToBytes(privateJwk.d);
+  const publicKey = base64UrlToBytes(publicJwk.x);
+  if (seed.length !== 32 || publicKey.length !== 32) {
+    throw new StrataContractError("session key export returned an invalid Ed25519 key");
+  }
+  const packed = new Uint8Array(64);
+  packed.set(seed, 0);
+  packed.set(publicKey, 32);
+  return {
+    publicKey: base58Encode(publicKey),
+    secretKey: base58Encode(packed),
+  };
 }
 
 /**
@@ -95,7 +137,7 @@ function locateSignatureSlot(
 /**
  * Build a `StrataSessionSigner` from a session secret key. Verifies that the
  * key matches `expectedPublicKey` when given (e.g. the key the owner
- * registered), so a pasted key from the wrong wallet fails immediately.
+ * registered), so a credential from the wrong wallet fails immediately.
  */
 export async function sessionSignerFromSecretKey(
   secretKey: Uint8Array | string,
