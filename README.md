@@ -253,7 +253,7 @@ other makers, takers, or where liquidity is sourced is ever returned.
 
 ```ts
 const status = await strata.marketMaking.status(market.market_id, makerWallet);
-// status.firm_orders, status.intent, status.signed_quotes, status.strands,
+// status.firm_orders, status.signed_quotes, status.strands,
 // status.currents, status.dead_man_guards, status.active_products
 
 const reputation = await strata.marketMaking.reputation(market.market_id, makerWallet);
@@ -308,13 +308,12 @@ market UserAccount while at least one Strand or Current is live. It returns to
 the canonical Vault balance after the final control is disabled, exhausted,
 expired, or cancelled.
 
-`status` reports resting firm orders by side, the intent record with its live
-remaining fill budget, signed-quote lane eligibility and the maker's own live
-quotes, each Strand and Current with levels or bands, remaining exposure,
+`status` reports resting firm orders by side, signed-quote lane eligibility and
+the maker's own live quotes, each Strand and Current with levels or bands, remaining exposure,
 expiry against the current slot, and live Strata mark health, plus armed dead-man guards.
 The maker stream starts from a signed snapshot of that same status and recent
-maker-side fills tagged with their product (`firm_order`, `intent`, `strand`,
-`current`), then applies contiguous `maker_fill` and `maker_status` events and
+maker-side fills tagged with their product (`firm_order`, `strand`, `current`),
+then applies contiguous `maker_fill` and `maker_status` events and
 recovers any gap from a fresh signed snapshot. Signer-less adapters (terminal,
 MCP) use `statusAuthorizationPayload` / `reputationAuthorizationPayload` and
 submit the detached signature through `statusAuthorized` /
@@ -326,7 +325,7 @@ Every deployment runs the non-broadcasting suite automatically. Anyone can run
 the exact same public black-box proof:
 
 ```sh
-npx --yes --package @stratabook/sdk@0.2.13 strata-maker-conformance safe --pretty
+npx --yes --package @stratabook/sdk@0.2.14 strata-maker-conformance safe --pretty
 ```
 
 It checks live market/mark readiness, maker status and reputation behavior,
@@ -340,7 +339,7 @@ MCP requests, repeats Strand through the SDK, keeps collateral observable while
 each product is live, and waits for automatic expiry:
 
 ```sh
-npx --yes --package @stratabook/sdk@0.2.13 strata-maker-conformance funded \
+npx --yes --package @stratabook/sdk@0.2.14 strata-maker-conformance funded \
   --keypair /absolute/path/maker.json \
   --confirm-funded-write RUN_FUNDED_MAINNET_CONFORMANCE --pretty
 ```

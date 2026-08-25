@@ -3,6 +3,14 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.14
+
+- Add atomic session replacement to `platform.vault.setup`: callers can name
+  the old session public key while registering a fresh key under one exact,
+  owner-signed policy transaction.
+- Validate that setup responses echo both the replacement identity and every
+  owner-selected session limit exactly.
+
 ## 0.2.13
 
 - Add `generateSessionKeypair`, a Web Crypto-backed helper that returns a

@@ -600,6 +600,7 @@ test("reads typed portfolio and community state and submits only an externally s
   const setup = await client.vault.prepareSetup({
     walletAddress: wallet,
     sessionPublicKey: "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
+    replaceSessionPublicKey: null,
     marketId: "market_33333333333333333333333333333333",
     spendingLimits: [
       {
@@ -695,6 +696,7 @@ test("reads typed portfolio and community state and submits only an externally s
   assert.deepEqual(setupRequest, {
     wallet_address: wallet,
     session_public_key: "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2",
+    replace_session_public_key: null,
     market_id: "market_33333333333333333333333333333333",
     expires_at_ms: null,
     minimum_interval_seconds: 1,

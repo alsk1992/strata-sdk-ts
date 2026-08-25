@@ -1891,7 +1891,7 @@ export function platformVaultSetupPrepareResponse(
   const response = object(value, "platform vault setup preparation response");
   exactKeys(response, [
     "schema_version", "contract_version", "server_time_ms", "wallet_address",
-    "session_public_key", "market_id", "mode", "expires_at_ms", "permanent",
+    "session_public_key", "replace_session_public_key", "market_id", "mode", "expires_at_ms", "permanent",
     "minimum_interval_seconds", "maximum_tolerance_bps", "spending_limits",
     "transaction_base64", "recent_blockhash", "owner_signature_required",
     "preparation_id", "sponsored", "submit_by_ms",
@@ -1935,6 +1935,9 @@ export function platformVaultSetupPrepareResponse(
     server_time_ms: serverTimeMs,
     wallet_address: walletAddress(response.wallet_address),
     session_public_key: walletAddress(response.session_public_key, "session_public_key"),
+    replace_session_public_key: response.replace_session_public_key === null
+      ? null
+      : walletAddress(response.replace_session_public_key, "replace_session_public_key"),
     market_id: response.market_id === null ? null : marketId(response.market_id),
     mode: response.mode,
     expires_at_ms: expiresAtMs,

@@ -297,7 +297,6 @@ async function run(): Promise<void> {
     else {
       console.log(`${response.wallet_address} in ${response.market_id}: ${response.active_products} active maker products at slot ${response.current_slot}`);
       console.log(`  firm orders: ${response.firm_orders.resting_orders} (bids ${response.firm_orders.bid_orders}, asks ${response.firm_orders.ask_orders})`);
-      console.log(`  intent:      ${response.intent === null ? "none" : `${response.intent.active ? "active" : "inactive"} ${response.intent.side} remaining ${response.intent.remaining_fill_size_atoms}`}`);
       console.log(`  signed lane: ${response.signed_quotes.eligible ? "eligible" : "not eligible"}, ${response.signed_quotes.live_quotes.length} live quotes`);
       console.log(`  strands:     ${response.strands.length}, currents: ${response.currents.length}, dead-man guards: ${response.dead_man_guards.length}`);
     }
