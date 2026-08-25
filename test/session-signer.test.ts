@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync, sign as nodeSign, verify as nodeVerify, createPublicKey } from "node:crypto";
 import test from "node:test";
-import { base58Encode, decodeBase64, encodeBase64, sessionSignerFromSecretKey } from "../src/index.js";
+import {
+  base58Encode,
+  decodeBase64,
+  encodeBase64,
+  generateSessionKeypair,
+  sessionSignerFromSecretKey,
+} from "../src/index.js";
 
 function seedAndPublic(): { seed: Uint8Array; publicKey: Uint8Array; secretKey: Uint8Array; privatePem: string } {
   const pair = generateKeyPairSync("ed25519");
@@ -28,6 +34,14 @@ test("session signer derives the public key and signs messages verifiably", asyn
   const spki = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(publicKey)]);
   assert.ok(nodeVerify(null, message, createPublicKey({ key: spki, format: "der", type: "spki" }), signature));
   await assert.rejects(sessionSignerFromSecretKey(secretKey, base58Encode(seed)), /does not belong/);
+});
+
+test("session key generation returns a signer-compatible Solana keypair", async () => {
+  const generated = await generateSessionKeypair();
+  const signer = await sessionSignerFromSecretKey(generated.secretKey, generated.publicKey);
+  assert.equal(signer.publicKey, generated.publicKey);
+  assert.match(generated.publicKey, /^[1-9A-HJ-NP-Za-km-z]{32,44}$/);
+  assert.match(generated.secretKey, /^[1-9A-HJ-NP-Za-km-z]{80,90}$/);
 });
 
 test("session signer fills exactly its own signature slot in a prepared transaction", async () => {
