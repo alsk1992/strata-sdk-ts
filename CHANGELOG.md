@@ -3,6 +3,11 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.16
+
+- Coordinated patch for Rust capability-fixture parity. TypeScript API and
+  wire behavior are unchanged from 0.2.15.
+
 ## 0.2.15
 
 - Add `marketMaking.intent.prepare`, `.submit`, and `.execute` for existing
