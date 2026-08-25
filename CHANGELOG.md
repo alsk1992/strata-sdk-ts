@@ -3,6 +3,11 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.12
+
+- Coordinated release for MCP 0.2.12's client-neutral, direct-use onboarding.
+  The TypeScript API and wire contract are unchanged from 0.2.11.
+
 ## 0.2.11
 
 - Resolve the maker conformance CLI entrypoint through npm's executable
