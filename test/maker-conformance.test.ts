@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join as joinPath } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { base58Encode } from "../src/client.js";
 import { parseMakerConformanceArgs } from "../src/maker-conformance-cli.js";
@@ -111,4 +116,20 @@ test("unknown flags and secret-like inline values fail closed", () => {
     () => parseMakerConformanceArgs(["funded", "--secret-key", "do-not-accept"]),
     /unknown option/,
   );
+});
+
+test("the npm-style symlink executes the conformance CLI", async () => {
+  const directory = await mkdtemp(joinPath(tmpdir(), "strata-maker-conformance-"));
+  try {
+    const target = fileURLToPath(new URL("../src/maker-conformance-cli.js", import.meta.url));
+    const entrypoint = joinPath(directory, "strata-maker-conformance");
+    await symlink(target, entrypoint);
+    const result = spawnSync(process.execPath, [entrypoint, "--help"], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /^Usage:\n  strata-maker-conformance safe/m);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
