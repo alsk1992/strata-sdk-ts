@@ -105,7 +105,7 @@ test("discovers the complete live-gated platform action graph", async () => {
 
   const result = await client.discovery.graph();
   assert.equal(result.entry_operation_id, "platform.capabilities.read");
-  assert.equal(result.operations.length, 69);
+  assert.equal(result.operations.length, 70);
   assert.ok(result.operations.some((operation) => operation.id === "twap.place.submit"));
   assert.ok(result.operations.some((operation) => operation.id === "twap.cancel.submit"));
   assert.ok(result.operations.some((operation) => operation.id === "vault.relay"));
@@ -1756,6 +1756,198 @@ test("prepares and submits exact Strand and Current maker controls", async () =>
     }),
     /exactly 16/,
   );
+});
+
+test("executes one exact sponsored IntentBook update through a Vault session", async () => {
+  const capabilities = await v2Fixture("platform-capabilities");
+  addPlatformCapabilities(capabilities, [{
+    id: "mm.intent.manage",
+    risk: "submit",
+    transports: ["http", "mcp"],
+  }]);
+  const ownerWallet = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
+  const sessionPublicKey = "9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2";
+  const feePayer = new Uint8Array(32).fill(1);
+  const delegate = new Uint8Array(32).fill(2);
+  const intent = new Uint8Array(32).fill(3);
+  const userAccount = new Uint8Array(32).fill(4);
+  const vault = new Uint8Array(32).fill(5);
+  const strataProgram = new Uint8Array(32).fill(6);
+  const market = new Uint8Array(32).fill(7);
+  const vaultProgram = new Uint8Array(32).fill(8);
+  const blockhash = new Uint8Array(32).fill(9);
+  const join = (...parts: readonly Uint8Array[]): Uint8Array => {
+    const output = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
+    let offset = 0;
+    for (const part of parts) {
+      output.set(part, offset);
+      offset += part.length;
+    }
+    return output;
+  };
+  const compact = (value: number): Uint8Array => {
+    const output: number[] = [];
+    let remaining = value;
+    do {
+      const byte = remaining & 0x7f;
+      remaining >>= 7;
+      output.push(remaining === 0 ? byte : byte | 0x80);
+    } while (remaining !== 0);
+    return Uint8Array.from(output);
+  };
+  const u16 = (value: number): Uint8Array => {
+    const output = new Uint8Array(2);
+    new DataView(output.buffer).setUint16(0, value, true);
+    return output;
+  };
+  const u64 = (value: bigint): Uint8Array => {
+    const output = new Uint8Array(8);
+    new DataView(output.buffer).setBigUint64(0, value, true);
+    return output;
+  };
+  const opaqueMarketId = async (): Promise<string> => {
+    const input = new TextEncoder().encode(
+      `strata-sdk-product:v1\0market\0${base58Encode(market)}`,
+    );
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", input));
+    return `market_${Array.from(digest.slice(0, 16), (byte) =>
+      byte.toString(16).padStart(2, "0")).join("")}`;
+  };
+  const marketId = await opaqueMarketId();
+  const keys = [
+    feePayer,
+    base58Decode(sessionPublicKey, 32, "session"),
+    delegate,
+    intent,
+    userAccount,
+    vault,
+    strataProgram,
+    base58Decode(ownerWallet, 32, "owner"),
+    market,
+    vaultProgram,
+  ];
+  const inner = join(
+    new Uint8Array([9, 2]),
+    new Uint8Array(7),
+    u64(149_000_000n),
+    u64(151_000_000n),
+    u64(1_000_000_000n),
+  );
+  const envelope = join(
+    new Uint8Array([3]),
+    u64(0n),
+    new Uint8Array([0, 0]),
+    u16(inner.length),
+    new Uint8Array([4]),
+    inner,
+    new Uint8Array([1, 0, 2, 2]),
+  );
+  const accounts = new Uint8Array([
+    1, 5, 2, 6, 7, 0,
+    5, 8, 3, 4,
+    8,
+  ]);
+  const instruction = join(
+    new Uint8Array([9]),
+    compact(accounts.length),
+    accounts,
+    compact(envelope.length),
+    envelope,
+  );
+  const transactionBase64 = Buffer.from(join(
+    compact(2),
+    new Uint8Array(128),
+    new Uint8Array([2, 1, 5]),
+    compact(keys.length),
+    ...keys,
+    blockhash,
+    compact(1),
+    instruction,
+  )).toString("base64");
+  const prepared = {
+    schema_version: 2,
+    contract_version: "2.0",
+    market_id: marketId,
+    owner_wallet: ownerWallet,
+    vault_address: base58Encode(vault),
+    session_public_key: sessionPublicKey,
+    intent_address: base58Encode(intent),
+    action: "post",
+    transaction_base64: transactionBase64,
+    recent_blockhash: base58Encode(blockhash),
+    last_valid_block_height: 400_000_000,
+    expires_at_ms: Date.now() + 30_000,
+    sponsored: true,
+  };
+  const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const client = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input, init) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push({ path, body });
+      if (path.endsWith("/prepare")) return Response.json(prepared);
+      return Response.json({ signature: "1".repeat(64) });
+    },
+  });
+  let signed = 0;
+  const signer = {
+    publicKey: sessionPublicKey,
+    signMessage: async () => new Uint8Array(64),
+    signTransaction: async (transaction: string) => {
+      signed += 1;
+      assert.equal(transaction, transactionBase64);
+      return transaction;
+    },
+  };
+  const operation = {
+    action: "post" as const,
+    ownerWallet,
+    side: "both" as const,
+    minPriceAtoms: 149_000_000n,
+    maxPriceAtoms: 151_000_000n,
+    maxFillSizeAtoms: 1_000_000_000n,
+  };
+  const receipt = await client.marketMaking.intent.execute(marketId, { operation, signer });
+  assert.equal(receipt.signature, "1".repeat(64));
+  assert.equal(signed, 1);
+  assert.deepEqual(requests.map(({ path }) => path), [
+    `/v2/markets/${marketId}/makers/intents/prepare`,
+    `/v2/markets/${marketId}/makers/intents/submit`,
+  ]);
+  assert.deepEqual(requests[0]?.body, {
+    action: "post",
+    market_id: marketId,
+    owner_wallet: ownerWallet,
+    session_public_key: sessionPublicKey,
+    side: "both",
+    min_price_atoms: "149000000",
+    max_price_atoms: "151000000",
+    max_fill_size_atoms: "1000000000",
+  });
+  assert.equal(requests[1]?.body.signed_transaction_base64, transactionBase64);
+
+  const changedSide = new Uint8Array(Buffer.from(transactionBase64, "base64"));
+  const innerOffset = Buffer.from(changedSide).indexOf(Buffer.from(inner));
+  assert.ok(innerOffset >= 0);
+  changedSide[innerOffset + 1] = 0;
+  const badClient = new StrataPlatformClient({
+    apiBase: "https://example.test",
+    fetch: async (input) => {
+      const path = new URL(input instanceof Request ? input.url : input).pathname;
+      if (path.endsWith("/capabilities")) return Response.json(capabilities);
+      return Response.json({
+        ...prepared,
+        transaction_base64: Buffer.from(changedSide).toString("base64"),
+      });
+    },
+  });
+  await assert.rejects(
+    badClient.marketMaking.intent.execute(marketId, { operation, signer }),
+    /requested economics/,
+  );
+  assert.equal(signed, 1, "a changed packet must be rejected before session signing");
 });
 
 test("starts a Current from human inputs and waits for exact chain-derived state", async () => {

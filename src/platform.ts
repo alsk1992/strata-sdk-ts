@@ -1719,7 +1719,7 @@ export interface PlatformMakerSignedQuote {
 
 export interface PlatformMakerIntentStatus {
   readonly active: boolean;
-  readonly side: PlatformMakerSide;
+  readonly side: PlatformMakerIntentSide;
   readonly minimum_price_atoms: AtomicString;
   readonly maximum_price_atoms: AtomicString;
   readonly maximum_fill_size_atoms: AtomicString;
@@ -1797,7 +1797,7 @@ export interface PlatformMakerStatusResponse {
   readonly server_time_ms: number;
   readonly current_slot: AtomicString;
   readonly firm_orders: PlatformMakerFirmOrderSummary;
-  /** Reserved compatibility field; null until the intent product launches. */
+  /** Existing IntentBook seat, including Vault-session-controlled intents. */
   readonly intent: PlatformMakerIntentStatus | null;
   readonly signed_quotes: PlatformMakerSignedQuoteLane;
   readonly strands: readonly PlatformMakerStrandStatus[];
@@ -1862,6 +1862,70 @@ export type PlatformMakerCurrentPrepareInput =
       readonly action: "cancel";
       readonly makerWallet: string;
     };
+
+export type PlatformMakerIntentSide = "buy" | "sell" | "both";
+
+/** Control an existing curated IntentBook seat through the owner's Vault session. */
+export type PlatformMakerIntentPrepareInput =
+  | {
+      readonly action: "post";
+      readonly ownerWallet: string;
+      readonly sessionPublicKey: string;
+      readonly side: PlatformMakerIntentSide;
+      readonly minPriceAtoms: AtomicString | bigint;
+      readonly maxPriceAtoms: AtomicString | bigint;
+      readonly maxFillSizeAtoms: AtomicString | bigint;
+    }
+  | {
+      readonly action: "revoke";
+      readonly ownerWallet: string;
+      readonly sessionPublicKey: string;
+    };
+
+export type PlatformMakerIntentAction = "post" | "revoke";
+
+export interface PlatformMakerIntentPrepareResponse {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly market_id: PlatformEntityId;
+  readonly owner_wallet: string;
+  readonly vault_address: string;
+  readonly session_public_key: string;
+  readonly intent_address: string;
+  readonly action: PlatformMakerIntentAction;
+  readonly transaction_base64: string;
+  readonly recent_blockhash: string;
+  readonly last_valid_block_height: number;
+  readonly expires_at_ms: number;
+  readonly sponsored: true;
+}
+
+export interface PlatformMakerIntentSubmitInput {
+  readonly signedTransactionBase64: string;
+}
+
+export interface PlatformMakerIntentSubmitResponse {
+  readonly signature: string;
+}
+
+export interface PlatformMakerIntentVerificationContext {
+  readonly marketId: PlatformEntityId;
+  readonly operation: PlatformMakerIntentPrepareInput;
+  readonly prepared: PlatformMakerIntentPrepareResponse;
+  readonly ownerWallet: string;
+  readonly sessionPublicKey: string;
+}
+
+export type PlatformMakerIntentExecuteOperation =
+  | Omit<Extract<PlatformMakerIntentPrepareInput, { action: "post" }>, "sessionPublicKey">
+  | Omit<Extract<PlatformMakerIntentPrepareInput, { action: "revoke" }>, "sessionPublicKey">;
+
+export interface PlatformMakerIntentExecuteInput {
+  readonly operation: PlatformMakerIntentExecuteOperation;
+  readonly signer: StrataSessionSigner;
+  /** Optional stricter verifier; the built-in verifier is deny-by-default. */
+  verifyTransaction?(context: PlatformMakerIntentVerificationContext): void | Promise<void>;
+}
 
 export type PlatformMakerControlProduct = "strand" | "current";
 export type PlatformMakerControlAction =

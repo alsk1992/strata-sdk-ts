@@ -12,6 +12,8 @@ import {
   platformMakerReputationResponse,
   platformMakerControlPrepareResponse,
   platformMakerControlSubmitResponse,
+  platformMakerIntentPrepareResponse,
+  platformMakerIntentSubmitResponse,
   platformMakerStatusResponse,
   platformActionGraphResponse,
   platformAssetsResponse,
@@ -92,6 +94,7 @@ import {
   type PlatformOrderCommandOptions,
 } from "./platform-order-stream.js";
 import {
+  verifyIntentTransaction,
   verifyMakerTransaction,
   verifyOrderTransaction,
   verifySignedTransactionMessage,
@@ -114,6 +117,11 @@ import type {
   PlatformMakerControlSubmitInput,
   PlatformMakerControlSubmitResponse,
   PlatformMakerCurrentPrepareInput,
+  PlatformMakerIntentExecuteInput,
+  PlatformMakerIntentPrepareInput,
+  PlatformMakerIntentPrepareResponse,
+  PlatformMakerIntentSubmitInput,
+  PlatformMakerIntentSubmitResponse,
   PlatformMakerQuickstartPrepareInput,
   PlatformMakerQuickstartPrepared,
   PlatformMakerQuickstartProduct,
@@ -390,7 +398,26 @@ export interface PlatformMakerCurrentModule {
   ): Promise<PlatformMakerControlSubmitResponse>;
 }
 
+export interface PlatformMakerIntentModule {
+  /** Prepare one sponsored Vault-session update of an existing IntentBook seat. */
+  prepare(
+    marketId: string,
+    request: PlatformMakerIntentPrepareInput,
+  ): Promise<PlatformMakerIntentPrepareResponse>;
+  /** Submit the exact session-signed packet; exact retries return the same signature. */
+  submit(
+    marketId: string,
+    request: PlatformMakerIntentSubmitInput,
+  ): Promise<PlatformMakerIntentSubmitResponse>;
+  /** Prepare, verify, session-sign, and submit in one call. */
+  execute(
+    marketId: string,
+    request: PlatformMakerIntentExecuteInput,
+  ): Promise<PlatformMakerIntentSubmitResponse>;
+}
+
 export interface PlatformMarketMakingModule {
+  readonly intent: PlatformMakerIntentModule;
   readonly strand: PlatformMakerStrandModule;
   readonly current: PlatformMakerCurrentModule;
   /** Resolve human inputs and prepare one exact, externally signed maker start. */
@@ -639,6 +666,11 @@ export class StrataPlatformClient {
         this.subscribeAccount(signer, handlers, streamOptions),
     };
     this.marketMaking = {
+      intent: {
+        prepare: (marketId, request) => this.makerIntentPrepare(marketId, request),
+        submit: (marketId, request) => this.makerIntentSubmit(marketId, request),
+        execute: (marketId, request) => this.makerIntentExecute(marketId, request),
+      },
       strand: {
         prepare: (marketId, request) => this.makerStrandPrepare(marketId, request),
         submit: (marketId, request) => this.makerControlSubmit(
@@ -1605,6 +1637,97 @@ export class StrataPlatformClient {
     );
     assertMakerControlPrepare(response, id, wire.makerWallet, "strand", wire.action);
     return response;
+  }
+
+  private async makerIntentPrepare(
+    marketId: string,
+    request: PlatformMakerIntentPrepareInput,
+  ): Promise<PlatformMakerIntentPrepareResponse> {
+    await this.requireCapability("mm.intent.manage", "submit");
+    const id = checkedMarketId(marketId);
+    const ownerWallet = canonicalPublicKey(request.ownerWallet, "ownerWallet");
+    const sessionPublicKey = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
+    const body = request.action === "post"
+      ? (() => {
+          const minPriceAtoms = checkedAtomic(request.minPriceAtoms, "minPriceAtoms", false);
+          const maxPriceAtoms = checkedAtomic(request.maxPriceAtoms, "maxPriceAtoms", false);
+          if (BigInt(minPriceAtoms) > BigInt(maxPriceAtoms)) {
+            throw new TypeError("minPriceAtoms cannot exceed maxPriceAtoms");
+          }
+          return {
+            action: "post",
+            market_id: id,
+            owner_wallet: ownerWallet,
+            session_public_key: sessionPublicKey,
+            side: request.side,
+            min_price_atoms: minPriceAtoms,
+            max_price_atoms: maxPriceAtoms,
+            max_fill_size_atoms: checkedAtomic(
+              request.maxFillSizeAtoms,
+              "maxFillSizeAtoms",
+              false,
+            ),
+          };
+        })()
+      : {
+          action: "revoke",
+          market_id: id,
+          owner_wallet: ownerWallet,
+          session_public_key: sessionPublicKey,
+        };
+    const response = platformMakerIntentPrepareResponse(
+      await this.post(`/v2/markets/${id}/makers/intents/prepare`, body),
+    );
+    if (
+      response.market_id !== id
+      || response.owner_wallet !== ownerWallet
+      || response.session_public_key !== sessionPublicKey
+      || response.action !== request.action
+    ) {
+      throw new StrataContractError("maker-intent preparation does not match the request");
+    }
+    return response;
+  }
+
+  private async makerIntentSubmit(
+    marketId: string,
+    request: PlatformMakerIntentSubmitInput,
+  ): Promise<PlatformMakerIntentSubmitResponse> {
+    await this.requireCapability("mm.intent.manage", "submit");
+    const id = checkedMarketId(marketId);
+    const signedTransactionBase64 = request.signedTransactionBase64.trim();
+    decodeBase64(signedTransactionBase64);
+    return platformMakerIntentSubmitResponse(
+      await this.post(`/v2/markets/${id}/makers/intents/submit`, {
+        signed_transaction_base64: signedTransactionBase64,
+      }),
+    );
+  }
+
+  private async makerIntentExecute(
+    marketId: string,
+    request: PlatformMakerIntentExecuteInput,
+  ): Promise<PlatformMakerIntentSubmitResponse> {
+    const id = checkedMarketId(marketId);
+    const ownerWallet = canonicalPublicKey(request.operation.ownerWallet, "ownerWallet");
+    const sessionPublicKey = canonicalPublicKey(request.signer.publicKey, "signer.publicKey");
+    if (typeof request.signer.signTransaction !== "function") {
+      throw new TypeError("signer must provide signTransaction");
+    }
+    const operation: PlatformMakerIntentPrepareInput = {
+      ...request.operation,
+      ownerWallet,
+      sessionPublicKey,
+    };
+    const prepared = await this.makerIntentPrepare(id, operation);
+    const context = { marketId: id, operation, prepared, ownerWallet, sessionPublicKey };
+    if (request.verifyTransaction) await request.verifyTransaction(context);
+    else await verifyIntentTransaction(context);
+    const signedTransactionBase64 = await request.signer.signTransaction(
+      prepared.transaction_base64,
+    );
+    verifySignedTransactionMessage(prepared.transaction_base64, signedTransactionBase64);
+    return this.makerIntentSubmit(id, { signedTransactionBase64 });
   }
 
   private async waitForMakerMarket(reference: string, timeoutMs = 30_000): Promise<PlatformMarket> {

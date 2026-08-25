@@ -3,6 +3,13 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.15
+
+- Add `marketMaking.intent.prepare`, `.submit`, and `.execute` for existing
+  curated IntentBook seats controlled by the owner's Vault session.
+- Add deny-by-default transaction decoding that binds every account and
+  economic field before signing and rejects any changed message afterward.
+
 ## 0.2.14
 
 - Add atomic session replacement to `platform.vault.setup`: callers can name

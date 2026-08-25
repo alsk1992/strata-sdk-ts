@@ -19,6 +19,8 @@ import {
   type PlatformMakerDeadManGuard,
   type PlatformMakerEvent,
   type PlatformMakerFill,
+  type PlatformMakerIntentPrepareResponse,
+  type PlatformMakerIntentSubmitResponse,
   type PlatformMakerProduct,
   type PlatformMakerReputationResponse,
   type PlatformMakerReputationTier,
@@ -2429,6 +2431,13 @@ function makerSide(value: unknown, field: string): PlatformMakerSide {
   return value;
 }
 
+function makerIntentSide(value: unknown, field: string): "buy" | "sell" | "both" {
+  if (value !== "buy" && value !== "sell" && value !== "both") {
+    throw new Error(`${field} is invalid`);
+  }
+  return value;
+}
+
 function oracleHealth(value: unknown, field: string): PlatformOracleHealth {
   if (value !== "fresh" && value !== "stale" && value !== "unknown") {
     throw new Error(`${field} must be fresh, stale, or unknown`);
@@ -2492,7 +2501,7 @@ export function platformMakerStatusResponse(value: unknown): PlatformMakerStatus
     }
     intent = {
       active: boolean(raw.active, "intent.active"),
-      side: makerSide(raw.side, "intent.side"),
+      side: makerIntentSide(raw.side, "intent.side"),
       minimum_price_atoms: minimum,
       maximum_price_atoms: maximum,
       maximum_fill_size_atoms: maximumFill,
@@ -3155,6 +3164,54 @@ export function platformMakerControlSubmitResponse(
     signature,
     status: "submitted",
   };
+}
+
+export function platformMakerIntentPrepareResponse(
+  value: unknown,
+): PlatformMakerIntentPrepareResponse {
+  const response = object(value, "maker-intent prepare response");
+  exactKeys(response, [
+    "schema_version", "contract_version", "market_id", "owner_wallet", "vault_address",
+    "session_public_key", "intent_address", "action", "transaction_base64",
+    "recent_blockhash", "last_valid_block_height", "expires_at_ms", "sponsored",
+  ], "maker-intent prepare response");
+  version(response);
+  const action = response.action;
+  if (action !== "post" && action !== "revoke") {
+    throw new Error("maker-intent action is invalid");
+  }
+  const recentBlockhash = string(response.recent_blockhash, "recent_blockhash");
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(recentBlockhash)) {
+    throw new Error("recent_blockhash is invalid");
+  }
+  if (response.sponsored !== true) throw new Error("maker-intent transaction is not sponsored");
+  return {
+    schema_version: PLATFORM_SCHEMA_VERSION,
+    contract_version: PLATFORM_CONTRACT_VERSION,
+    market_id: marketId(response.market_id),
+    owner_wallet: walletAddress(response.owner_wallet, "owner_wallet"),
+    vault_address: walletAddress(response.vault_address, "vault_address"),
+    session_public_key: walletAddress(response.session_public_key, "session_public_key"),
+    intent_address: walletAddress(response.intent_address, "intent_address"),
+    action,
+    transaction_base64: canonicalBase64(response.transaction_base64, "transaction_base64"),
+    recent_blockhash: recentBlockhash,
+    last_valid_block_height: integer(response.last_valid_block_height, "last_valid_block_height"),
+    expires_at_ms: integer(response.expires_at_ms, "expires_at_ms"),
+    sponsored: true,
+  };
+}
+
+export function platformMakerIntentSubmitResponse(
+  value: unknown,
+): PlatformMakerIntentSubmitResponse {
+  const response = object(value, "maker-intent submit response");
+  exactKeys(response, ["signature"], "maker-intent submit response");
+  const signature = string(response.signature, "signature");
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) {
+    throw new Error("signature is invalid");
+  }
+  return { signature };
 }
 
 export function platformOrderPrepareResponse(value: unknown): PlatformOrderPrepareResponse {

@@ -27,6 +27,8 @@ import type {
   PlatformRestingOrderType,
   PlatformMakerControlPrepareResponse,
   PlatformMakerCurrentPrepareInput,
+  PlatformMakerIntentPrepareInput,
+  PlatformMakerIntentPrepareResponse,
   PlatformMakerStrandPrepareInput,
   PlatformTwapPrepareResponse,
 } from "./platform.js";
@@ -53,6 +55,8 @@ const INNER_TAG_BALANCE = 1;
 const INNER_TAG_CANCEL_ORDER = 4;
 const INNER_TAG_PLACE_ORDER = 33;
 const INNER_TAG_MARKET_ACCOUNT = 34;
+const INNER_TAG_INTENT_POST = 9;
+const INNER_TAG_INTENT_REVOKE = 10;
 const INNER_TAG_TWAP_CANCEL = 36;
 const INNER_TAG_TWAP_POST = 38;
 
@@ -366,6 +370,8 @@ interface DelegatedInstruction {
   readonly inner: Uint8Array;
   /** Base58 keys of the inner instruction's accounts, in order. */
   readonly innerAccounts: readonly (string | undefined)[];
+  /** Registered-market and other policy accounts after the encoded inner metas. */
+  readonly policyAccounts: readonly (string | undefined)[];
 }
 
 /**
@@ -432,11 +438,20 @@ function structuralChecks(
     if (innerProgramKey !== innerProgram) {
       throw new StrataContractError("delegated instructions target more than one program");
     }
+    const innerAccountCount = data[13]!;
+    if (instruction.accountIndexes.length < 6 + innerAccountCount) {
+      throw new StrataContractError("delegated instruction account list is truncated");
+    }
     delegated.push({
       innerProgram: innerProgramKey,
       innerTag: inner[0]!,
       inner,
-      innerAccounts: instruction.accountIndexes.slice(6).map((index) => keys[index]),
+      innerAccounts: instruction.accountIndexes
+        .slice(6, 6 + innerAccountCount)
+        .map((index) => keys[index]),
+      policyAccounts: instruction.accountIndexes
+        .slice(6 + innerAccountCount)
+        .map((index) => keys[index]),
     });
   }
   if (delegated.length === 0 && options.requireEnvelope) {
@@ -668,6 +683,88 @@ export function verifyTwapTransaction(context: TwapTransactionVerification): voi
         `the transaction delegates an unexpected instruction (${instruction.innerTag})`,
       );
     }
+  }
+}
+
+export interface IntentTransactionVerification {
+  readonly marketId: string;
+  readonly operation: PlatformMakerIntentPrepareInput;
+  readonly prepared: PlatformMakerIntentPrepareResponse;
+  readonly ownerWallet: string;
+  readonly sessionPublicKey: string;
+}
+
+/** Deny-by-default verification of one Vault-session IntentBook mutation. */
+export async function verifyIntentTransaction(
+  context: IntentTransactionVerification,
+): Promise<void> {
+  const tx = decodeTransaction(context.prepared.transaction_base64);
+  if (tx.version !== "legacy" || tx.addressTableLookupCount !== 0) {
+    throw new StrataContractError("intent control must be a legacy transaction without lookups");
+  }
+  if (tx.numRequiredSignatures !== 2 || tx.instructions.length !== 1) {
+    throw new StrataContractError("intent control must require only relay and session signatures");
+  }
+  const delegated = structuralChecks(
+    tx,
+    context.sessionPublicKey,
+    context.ownerWallet,
+    context.prepared.recent_blockhash,
+    { allowLookupTables: false, requireEnvelope: true },
+  );
+  if (delegated.length !== 1) {
+    throw new StrataContractError("intent control must contain exactly one delegated instruction");
+  }
+  const outer = tx.instructions[0]!;
+  const key = (position: number): string | undefined =>
+    tx.staticAccountKeys[outer.accountIndexes[position] ?? -1];
+  if (
+    key(0) !== context.sessionPublicKey
+    || key(1) !== context.prepared.vault_address
+    || key(4) !== context.ownerWallet
+    || key(5) !== tx.staticAccountKeys[0]
+  ) {
+    throw new StrataContractError("intent control has invalid Vault-session bindings");
+  }
+  const instruction = delegated[0]!;
+  const [vault, market, intent] = instruction.innerAccounts;
+  if (
+    instruction.innerAccounts.length !== 4
+    || vault !== context.prepared.vault_address
+    || intent !== context.prepared.intent_address
+    || instruction.policyAccounts.length !== 1
+    || instruction.policyAccounts[0] !== market
+    || market === undefined
+  ) {
+    throw new StrataContractError("intent control has invalid intent accounts");
+  }
+  if ((await opaqueProductId("market", market)) !== context.marketId) {
+    throw new StrataContractError("intent control touches another market");
+  }
+  const data = tx.instructions[0]!.data;
+  const innerLength = data[11]! | (data[12]! << 8);
+  const roles = data.subarray(14 + innerLength, 14 + innerLength + data[13]!);
+  if (roles.length !== 4 || roles.some((role, index) => role !== [1, 0, 2, 2][index])) {
+    throw new StrataContractError("intent control has invalid account roles");
+  }
+  const inner = instruction.inner;
+  if (context.operation.action === "revoke") {
+    if (instruction.innerTag !== INNER_TAG_INTENT_REVOKE || inner.length !== 1) {
+      throw new StrataContractError("intent control is not the requested revoke");
+    }
+    return;
+  }
+  const side = ({ buy: 0, sell: 1, both: 2 } as const)[context.operation.side];
+  if (
+    instruction.innerTag !== INNER_TAG_INTENT_POST
+    || inner.length !== 33
+    || inner[1] !== side
+    || inner.subarray(2, 9).some((byte) => byte !== 0)
+    || readU64(inner, 9) !== BigInt(context.operation.minPriceAtoms)
+    || readU64(inner, 17) !== BigInt(context.operation.maxPriceAtoms)
+    || readU64(inner, 25) !== BigInt(context.operation.maxFillSizeAtoms)
+  ) {
+    throw new StrataContractError("intent control does not post the requested economics");
   }
 }
 
