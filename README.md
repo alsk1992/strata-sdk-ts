@@ -326,7 +326,7 @@ Every deployment runs the non-broadcasting suite automatically. Anyone can run
 the exact same public black-box proof:
 
 ```sh
-npx --yes @stratabook/sdk@0.2.10 strata-maker-conformance safe --pretty
+npx --yes --package @stratabook/sdk@0.2.11 strata-maker-conformance safe --pretty
 ```
 
 It checks live market/mark readiness, maker status and reputation behavior,
@@ -340,7 +340,7 @@ MCP requests, repeats Strand through the SDK, keeps collateral observable while
 each product is live, and waits for automatic expiry:
 
 ```sh
-npx --yes @stratabook/sdk@0.2.10 strata-maker-conformance funded \
+npx --yes --package @stratabook/sdk@0.2.11 strata-maker-conformance funded \
   --keypair /absolute/path/maker.json \
   --confirm-funded-write RUN_FUNDED_MAINNET_CONFORMANCE --pretty
 ```

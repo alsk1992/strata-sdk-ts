@@ -3,6 +3,13 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.11
+
+- Resolve the maker conformance CLI entrypoint through npm's executable
+  symlink, so the published `strata-maker-conformance` command actually runs.
+- Correct the pinned `npx --package` examples and cover the installed-bin
+  invocation path with a regression test.
+
 ## 0.2.10
 
 - Add the `strata-maker-conformance` binary and reusable safe, funded, and

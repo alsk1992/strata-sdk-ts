@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import {
@@ -280,7 +281,16 @@ async function main(): Promise<void> {
   process.stdout.write(`${JSON.stringify(report, null, options.pretty ? 2 : 0)}\n`);
 }
 
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isDirectEntrypoint(path: string | undefined): boolean {
+  if (path === undefined) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(path)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectEntrypoint(process.argv[1])) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "unknown conformance failure";
     process.stderr.write(`strata-maker-conformance: ${message}\n`);
