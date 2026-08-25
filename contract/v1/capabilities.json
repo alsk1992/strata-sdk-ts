@@ -83,6 +83,16 @@
       "mcp_exposure": "submit"
     },
     {
+      "id": "mm.intent.manage",
+      "introduced_in": "1.1",
+      "stability": "beta",
+      "required_scope": "mm:write",
+      "risk": "submit",
+      "default_enabled": false,
+      "public_sdk": true,
+      "mcp_exposure": "submit"
+    },
+    {
       "id": "mm.strand.manage",
       "introduced_in": "1.1",
       "stability": "beta",

@@ -302,14 +302,36 @@ The equivalent Strand methods are `marketMaking.strand.prepare` and
 cancel. Current prices from Strata's live mark; it does not need a separate
 publisher transaction.
 
+An existing curated IntentBook seat uses the owner's capped Vault session, so
+the owner wallet does not sign every update and Strata pays the network fee:
+
+```ts
+await strata.marketMaking.intent.execute(market.market_id, {
+  operation: {
+    action: "post",
+    ownerWallet,
+    side: "both",
+    minPriceAtoms: "149000000",
+    maxPriceAtoms: "151000000",
+    maxFillSizeAtoms: "1000000000",
+  },
+  signer: sessionSigner,
+});
+```
+
+The built-in verifier decodes the complete Vault envelope and refuses any
+changed market, account, role, side, price, or fill cap before signing. Low-level
+clients can use `marketMaking.intent.prepare` and `.submit`. `revoke` is a
+permanent close of that curated seat, not a temporary pause.
+
 Initialize the market Vault if needed, activate the control, then fund it with
 `vault.prepareDeposit` and `vault.submit`. Available collateral remains in the
 market UserAccount while at least one Strand or Current is live. It returns to
 the canonical Vault balance after the final control is disabled, exhausted,
 expired, or cancelled.
 
-`status` reports resting firm orders by side, signed-quote lane eligibility and
-the maker's own live quotes, each Strand and Current with levels or bands, remaining exposure,
+`status` reports resting firm orders by side, the Vault-owned intent seat,
+signed-quote lane eligibility and the maker's own live quotes, each Strand and Current with levels or bands, remaining exposure,
 expiry against the current slot, and live Strata mark health, plus armed dead-man guards.
 The maker stream starts from a signed snapshot of that same status and recent
 maker-side fills tagged with their product (`firm_order`, `strand`, `current`),
@@ -325,7 +347,7 @@ Every deployment runs the non-broadcasting suite automatically. Anyone can run
 the exact same public black-box proof:
 
 ```sh
-npx --yes --package @stratabook/sdk@0.2.14 strata-maker-conformance safe --pretty
+npx --yes --package @stratabook/sdk@0.2.15 strata-maker-conformance safe --pretty
 ```
 
 It checks live market/mark readiness, maker status and reputation behavior,
@@ -339,7 +361,7 @@ MCP requests, repeats Strand through the SDK, keeps collateral observable while
 each product is live, and waits for automatic expiry:
 
 ```sh
-npx --yes --package @stratabook/sdk@0.2.14 strata-maker-conformance funded \
+npx --yes --package @stratabook/sdk@0.2.15 strata-maker-conformance funded \
   --keypair /absolute/path/maker.json \
   --confirm-funded-write RUN_FUNDED_MAINNET_CONFORMANCE --pretty
 ```

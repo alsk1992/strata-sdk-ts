@@ -1335,22 +1335,40 @@
       "available": true
     },
     {
-      "id": "market_making.intent.manage",
+      "id": "market_making.intent.prepare",
       "capability_id": "mm.intent.manage",
-      "kind": "submit",
-      "summary": "Create, update, pause, or revoke the owner's intent liquidity.",
+      "kind": "prepare",
+      "summary": "Prepare an exact sponsored Vault-session post or permanent revoke for an existing curated IntentBook seat.",
       "transports": [
         {
           "transport": "http",
           "method": "POST",
-          "path": "/v2/markets/{market_id}/makers/intents"
+          "path": "/v2/markets/{market_id}/makers/intents/prepare"
         },
         {
-          "transport": "websocket",
-          "path": "/v2/markets/{market_id}/makers/{wallet_address}/commands"
+          "transport": "mcp",
+          "tool": "strata_market_making_intent_prepare"
         }
       ],
-      "available": false
+      "available": true
+    },
+    {
+      "id": "market_making.intent.submit",
+      "capability_id": "mm.intent.manage",
+      "kind": "submit",
+      "summary": "Submit the exact session-signed IntentBook transaction; an exact retry returns the original confirmed signature.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "POST",
+          "path": "/v2/markets/{market_id}/makers/intents/submit"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_market_making_intent_submit"
+        }
+      ],
+      "available": true
     },
     {
       "id": "market_making.strand.prepare",
@@ -2814,13 +2832,29 @@
           "available": true
         },
         {
-          "id": "manage_intent",
+          "id": "prepare_intent",
+          "kind": "prepare",
+          "capability_id": "mm.intent.manage",
+          "operation_ids": [
+            "market_making.intent.prepare"
+          ],
+          "available": true
+        },
+        {
+          "id": "sign_intent",
+          "kind": "external_signature",
+          "capability_id": null,
+          "operation_ids": [],
+          "available": true
+        },
+        {
+          "id": "submit_intent",
           "kind": "submit",
           "capability_id": "mm.intent.manage",
           "operation_ids": [
-            "market_making.intent.manage"
+            "market_making.intent.submit"
           ],
-          "available": false
+          "available": true
         },
         {
           "id": "prepare_strand",
@@ -2895,9 +2929,10 @@
           "kind": "submit",
           "capability_id": "mm.intent.manage",
           "operation_ids": [
-            "market_making.intent.manage"
+            "market_making.intent.prepare",
+            "market_making.intent.submit"
           ],
-          "available": false
+          "available": true
         }
       ],
       "edges": [
@@ -2918,8 +2953,18 @@
         },
         {
           "from": "subscribe_market",
-          "to": "manage_intent",
-          "condition": "owner selects the intent product"
+          "to": "prepare_intent",
+          "condition": "owner selects an existing curated intent seat"
+        },
+        {
+          "from": "prepare_intent",
+          "to": "sign_intent",
+          "condition": "the session verifies the exact Vault transaction"
+        },
+        {
+          "from": "sign_intent",
+          "to": "submit_intent",
+          "condition": "the session fills only its signature slot"
         },
         {
           "from": "subscribe_market",
@@ -2952,7 +2997,7 @@
           "condition": "the maker fills the transaction's only signature slot"
         },
         {
-          "from": "manage_intent",
+          "from": "submit_intent",
           "to": "fill_update",
           "condition": "maker product is active"
         },
