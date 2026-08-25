@@ -1200,6 +1200,12 @@ export class StrataPlatformClient {
     const wallet = canonicalPublicKey(request.walletAddress, "walletAddress");
     const session = canonicalPublicKey(request.sessionPublicKey, "sessionPublicKey");
     if (wallet === session) throw new TypeError("sessionPublicKey must differ from walletAddress");
+    const replacement = request.replaceSessionPublicKey == null
+      ? null
+      : canonicalPublicKey(request.replaceSessionPublicKey, "replaceSessionPublicKey");
+    if (replacement === wallet || replacement === session) {
+      throw new TypeError("replaceSessionPublicKey must differ from the wallet and new session");
+    }
     const market = request.marketId == null ? null : checkedMarketId(request.marketId);
     const expiresAtMs = request.expiresAtMs ?? null;
     if (
@@ -1241,6 +1247,7 @@ export class StrataPlatformClient {
       await this.post("/v2/vault/setup/prepare", {
         wallet_address: wallet,
         session_public_key: session,
+        replace_session_public_key: replacement,
         market_id: market,
         expires_at_ms: expiresAtMs,
         minimum_interval_seconds: minimumIntervalSeconds,
@@ -1251,6 +1258,7 @@ export class StrataPlatformClient {
     if (
       response.wallet_address !== wallet
       || response.session_public_key !== session
+      || response.replace_session_public_key !== replacement
       || response.market_id !== market
       || response.expires_at_ms !== expiresAtMs
       || response.minimum_interval_seconds !== minimumIntervalSeconds

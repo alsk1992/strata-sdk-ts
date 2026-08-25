@@ -16,7 +16,7 @@ export interface PlatformMakerHandlers {
   /** Full owner view after every sequenced event (snapshot, fill, status change). */
   readonly onMaker?: (view: PlatformMakerView) => void;
   readonly onFill?: (marketId: PlatformEntityId, fill: PlatformMakerFill) => void;
-  /** The owner's products/exposure changed (an intent, Strand, Current, order, or guard). */
+  /** The owner's products/exposure changed (a Strand, Current, order, or guard). */
   readonly onStatus?: (marketId: PlatformEntityId, status: PlatformMakerStatusResponse) => void;
   readonly onError?: (error: Error, marketId?: PlatformEntityId) => void;
 }

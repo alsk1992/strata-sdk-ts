@@ -854,6 +854,8 @@ export interface PlatformVaultSetupSpendingLimitInput {
 export interface PlatformVaultSetupPrepareInput {
   readonly walletAddress: string;
   readonly sessionPublicKey: string;
+  /** Old session to revoke atomically while registering the new one. */
+  readonly replaceSessionPublicKey?: string | null | undefined;
   /**
    * Optional. Names the market whose price protection the session pins when
    * the product has one; the session trades every market either way.
@@ -875,6 +877,8 @@ export interface PlatformVaultSetupPrepareResponse {
   readonly server_time_ms: number;
   readonly wallet_address: string;
   readonly session_public_key: string;
+  /** The old session requested for atomic replacement, if any. */
+  readonly replace_session_public_key: string | null;
   /** The market named in the request, if any. */
   readonly market_id: PlatformEntityId | null;
   readonly mode: PlatformVaultSetupMode;
@@ -1781,7 +1785,7 @@ export interface PlatformMakerDeadManGuard {
 
 /**
  * Authenticated, owner-scoped view of the maker's Strata products in one
- * market: firm orders, intent, Strands, Currents, the signed-quote lane, live
+ * market: firm orders, Strands, Currents, the signed-quote lane, live
  * exposure, health, and kill state.
  */
 export interface PlatformMakerStatusResponse {
@@ -1793,12 +1797,13 @@ export interface PlatformMakerStatusResponse {
   readonly server_time_ms: number;
   readonly current_slot: AtomicString;
   readonly firm_orders: PlatformMakerFirmOrderSummary;
+  /** Reserved compatibility field; null until the intent product launches. */
   readonly intent: PlatformMakerIntentStatus | null;
   readonly signed_quotes: PlatformMakerSignedQuoteLane;
   readonly strands: readonly PlatformMakerStrandStatus[];
   readonly currents: readonly PlatformMakerCurrentStatus[];
   readonly dead_man_guards: readonly PlatformMakerDeadManGuard[];
-  /** Products currently able to fill: active intent, live Strands/Currents, resting firm orders (as one). */
+  /** Products currently able to fill: live Strands/Currents and resting firm orders (as one). */
   readonly active_products: number;
 }
 
