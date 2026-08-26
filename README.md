@@ -375,7 +375,7 @@ Every deployment runs the non-broadcasting suite automatically. Anyone can run
 the exact same public black-box proof:
 
 ```sh
-npx --yes --package @stratabook/sdk@0.2.16 strata-maker-conformance safe --pretty
+npx --yes --package @stratabook/sdk@0.2.17 strata-maker-conformance safe --pretty
 ```
 
 It checks live market/mark readiness, maker status and reputation behavior,
@@ -389,7 +389,7 @@ MCP requests, repeats Strand through the SDK, keeps collateral observable while
 each product is live, and waits for automatic expiry:
 
 ```sh
-npx --yes --package @stratabook/sdk@0.2.16 strata-maker-conformance funded \
+npx --yes --package @stratabook/sdk@0.2.17 strata-maker-conformance funded \
   --keypair /absolute/path/maker.json \
   --confirm-funded-write RUN_FUNDED_MAINNET_CONFORMANCE --pretty
 ```
@@ -444,10 +444,10 @@ Who pays: an owner holding at least 0.01 SOL pays their own network fee
 and any rent (`sponsored: true`) and later recovers exactly what it spent from
 the owner's deposits — one extra transfer in the same deposit transaction,
 disclosed as `network_cost_atoms`, never more than 1% of a deposit, with any
-remainder carried to the next deposit. Rent for a first setup or first
-withdrawal policy is sponsored only when the wallet already holds about $10 of
-supported assets — the deposit that repays it is coming; an empty wallet pays
-that rent itself. There is no per-wallet quota, only a global daily circuit
+remainder carried to the next deposit. First setup is sponsored for an empty
+wallet too, so a user can register a session before holding SOL. Rent for a
+first withdrawal policy is sponsored when the wallet already holds about $10
+of supported assets. There is no per-wallet quota, only a global daily circuit
 breaker.
 
 ## Authenticated execution

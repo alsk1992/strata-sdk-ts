@@ -691,7 +691,7 @@ test("reads typed portfolio and community state and submits only an externally s
   assert.equal(vault.session?.spending_limits[0]?.asset_id, "asset_0123456789abcdef0123456789abcdef");
   assert.equal(setup.mode, "create");
   assert.equal(setup.owner_signature_required, true);
-  assert.equal(setup.minimum_interval_seconds, 1);
+  assert.equal(setup.minimum_interval_seconds, 0);
   assert.equal(setup.maximum_tolerance_bps, 100);
   assert.deepEqual(setupRequest, {
     wallet_address: wallet,
@@ -699,7 +699,7 @@ test("reads typed portfolio and community state and submits only an externally s
     replace_session_public_key: null,
     market_id: "market_33333333333333333333333333333333",
     expires_at_ms: null,
-    minimum_interval_seconds: 1,
+    minimum_interval_seconds: 0,
     maximum_tolerance_bps: 100,
     spending_limits: [
       {

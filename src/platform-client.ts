@@ -1249,7 +1249,7 @@ export class StrataPlatformClient {
     const minimumIntervalSeconds = checkedInteger(
       request.minimumIntervalSeconds ?? PLATFORM_SESSION_DEFAULT_MINIMUM_INTERVAL_SECONDS,
       "minimumIntervalSeconds",
-      1,
+      0,
       86_400,
     );
     const maximumToleranceBps = checkedInteger(

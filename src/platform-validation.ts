@@ -1950,7 +1950,6 @@ export function platformVaultSetupPrepareResponse(
         "minimum_interval_seconds",
         86_400,
       );
-      if (interval < 1) throw new Error("minimum_interval_seconds must be positive");
       return interval;
     })(),
     maximum_tolerance_bps: (() => {

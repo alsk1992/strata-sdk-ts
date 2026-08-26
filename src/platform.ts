@@ -8,10 +8,10 @@ import type {
 export const PLATFORM_SCHEMA_VERSION = 2 as const;
 export const PLATFORM_CONTRACT_VERSION = "2.0" as const;
 /**
- * Session policy applied when onboarding does not state one: at most one
- * execution per second per session, and a 1% maximum tolerance.
+ * Session policy applied when onboarding does not state one: strategy timing
+ * is unrestricted and the maximum price tolerance is 1%.
  */
-export const PLATFORM_SESSION_DEFAULT_MINIMUM_INTERVAL_SECONDS = 1 as const;
+export const PLATFORM_SESSION_DEFAULT_MINIMUM_INTERVAL_SECONDS = 0 as const;
 export const PLATFORM_SESSION_DEFAULT_MAXIMUM_TOLERANCE_BPS = 100 as const;
 /** A session carries at most this many spending limits. */
 export const PLATFORM_SESSION_MAX_SPENDING_LIMITS = 4 as const;
@@ -863,7 +863,7 @@ export interface PlatformVaultSetupPrepareInput {
   readonly marketId?: PlatformEntityId | null | undefined;
   /** Null or omitted requests the product's permanent session expiry. */
   readonly expiresAtMs?: number | null | undefined;
-  /** Omitted takes PLATFORM_SESSION_DEFAULT_MINIMUM_INTERVAL_SECONDS. */
+  /** Optional legacy hard cadence floor. Omitted/zero leaves timing to the strategy. */
   readonly minimumIntervalSeconds?: number | undefined;
   /** Omitted takes PLATFORM_SESSION_DEFAULT_MAXIMUM_TOLERANCE_BPS. */
   readonly maximumToleranceBps?: number | undefined;
