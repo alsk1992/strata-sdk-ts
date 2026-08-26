@@ -1,13 +1,40 @@
+<p align="center">
+  <a href="https://stratabook.app">
+    <img src="https://raw.githubusercontent.com/alsk1992/strata-sdk-ts/main/assets/readme-hero.svg" alt="Strata TypeScript SDK — The deepest book in DeFi" width="100%" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://stratabook.app">Trade</a> ·
+  <a href="https://stratabook.org/docs/agent-sdks">Docs</a> ·
+  <a href="https://www.npmjs.com/package/@stratabook/sdk">npm</a> ·
+  <a href="https://github.com/alsk1992/strata-mcp">MCP</a>
+</p>
+
 # `@stratabook/sdk`
 
-Strict TypeScript bindings and a terminal client for Strata's versioned public
-agent contract. It works in Node 20+ and modern browsers with no runtime
-dependencies.
+The official TypeScript SDK and terminal client for Strata. Read live markets,
+books, candles and trades; request Sonar quotes; trade through a capped Vault
+session; and manage Intent, Strand and Current liquidity from one typed client.
+It works in Node 20+ and modern browsers with no runtime dependencies.
 
-The official hosted API currently has market, exact-output, and asset-to-asset
-Sonar quotes enabled. The SDK still checks the live capability catalog before
-each gated operation; that is a runtime safety check, not an inactive-feature
-notice.
+| Live surface | What it gives you |
+| --- | --- |
+| Market data | Markets, books, best prices, marks, candles, trades and streams |
+| Sonar | Exact-input, exact-output and asset-to-asset quotes |
+| Trading | Quote execution, resting orders and TWAPs through owner-controlled Vault sessions |
+| Market making | IntentBook seats, Strands, Currents, maker status, fills and reputation |
+
+Each request is checked against Strata's live capability catalog, so a paused
+operation stops immediately across the SDK, MCP and hosted API.
+
+## Install
+
+```sh
+npm install @stratabook/sdk
+```
+
+## Request a Sonar quote
 
 ```ts
 import { StrataClient } from "@stratabook/sdk";
@@ -34,7 +61,7 @@ const buyOneSol = await strata.quote({
 console.log(buyOneSol.amount_in_atoms);
 ```
 
-Terminal usage:
+`10_000_000` atoms is `0.01 SOL`. For terminal use:
 
 ```sh
 npx -y @stratabook/sdk markets
@@ -81,6 +108,8 @@ strict customer economics without exposing implementation-specific token or
 path identifiers:
 
 ```ts
+import { StrataPlatformClient } from "@stratabook/sdk";
+
 const platform = new StrataPlatformClient();
 const assets = await platform.assets.list();
 const input = assets.assets.find((asset) => asset.symbol === "SOL");
@@ -208,7 +237,7 @@ for (const balance of account.balances) console.log(balance.asset_id, balance.to
 console.log(account.open_orders.length, "open orders", account.recent_fills.length, "recent fills");
 ```
 
-## Market making
+## Market making: Intent, Strands and Currents
 
 The simple path needs only the market, product, spread, total base size, and an
 external transaction signer. It resolves the public IDs and decimals, reads the
@@ -299,8 +328,7 @@ await strata.marketMaking.current.submit(market.market_id, {
 
 The equivalent Strand methods are `marketMaking.strand.prepare` and
 `marketMaking.strand.submit`, supporting upsert, recenter, enable/disable, and
-cancel. Current prices from Strata's live mark; it does not need a separate
-publisher transaction.
+cancel. Current tracks Strata's live mark automatically.
 
 An existing curated IntentBook seat uses the owner's capped Vault session, so
 the owner wallet does not sign every update and Strata pays the network fee:
