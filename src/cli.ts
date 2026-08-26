@@ -643,7 +643,10 @@ async function run(): Promise<void> {
       console.log(`${response.wallet_address}: ${response.mode}`);
       console.log(`  session:     ${response.session_public_key}`);
       if (response.market_id !== null) console.log(`  market:      ${response.market_id}`);
-      console.log(`  policy:      ${response.permanent ? "permanent" : `until ${response.expires_at_ms}`}, ${response.minimum_interval_seconds}s interval, ${response.maximum_tolerance_bps} bps, ${response.spending_limits.length === 0 ? "no spending limits" : `${response.spending_limits.length} spending limit(s)`}`);
+      const cadence = response.minimum_interval_seconds === 0
+        ? "strategy-controlled timing"
+        : `${response.minimum_interval_seconds}s hard cadence floor`;
+      console.log(`  policy:      ${response.permanent ? "permanent" : `until ${response.expires_at_ms}`}, ${cadence}, ${response.maximum_tolerance_bps} bps, ${response.spending_limits.length === 0 ? "no spending limits" : `${response.spending_limits.length} spending limit(s)`}`);
       console.log(`  transaction: ${response.transaction_base64}`);
       console.log(`  preparation: ${response.preparation_id}`);
       console.log(`  sponsored:   ${response.sponsored ? "yes — Strata pays the fee and rent" : "no — the owner wallet pays"}`);

@@ -3,6 +3,13 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.17
+
+- Default Vault sessions to strategy-controlled timing (`minimumIntervalSeconds
+  = 0`) while retaining a non-zero value as an optional legacy hard floor.
+- Accept and verify zero in prepared setup responses, and describe zero-SOL
+  first-session sponsorship accurately in the public onboarding guide.
+
 ## 0.2.16
 
 - Coordinated patch for Rust capability-fixture parity. TypeScript API and
