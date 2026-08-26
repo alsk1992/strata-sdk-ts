@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://stratabook.app">
-    <img src="https://raw.githubusercontent.com/alsk1992/strata-sdk-ts/main/assets/readme-hero.svg" alt="Strata TypeScript SDK — The deepest book in DeFi" width="100%" />
+    <img src="https://raw.githubusercontent.com/alsk1992/strata-sdk-ts/main/assets/readme-hero.svg?v=20260826-2" alt="Strata TypeScript SDK — The deepest book in DeFi" width="100%" />
   </a>
 </p>
 
