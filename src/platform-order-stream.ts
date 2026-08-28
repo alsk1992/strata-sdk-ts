@@ -312,6 +312,7 @@ export function connectPlatformOrderCommands(
         event.error.code,
         event.error.message,
         event.error.retryable,
+        event.error.retry_after_ms,
       ));
       return;
     }

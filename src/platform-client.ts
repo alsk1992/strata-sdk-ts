@@ -2362,6 +2362,7 @@ export class StrataPlatformClient {
           error?.code ?? "request_failed",
           error?.message ?? "Strata could not complete the request.",
           error?.retryable ?? response.status >= 500,
+          error?.retry_after_ms ?? retryAfterHeaderMs(response.headers),
         );
       }
       return body;
@@ -2399,6 +2400,7 @@ export class StrataPlatformClient {
           error?.code ?? "request_failed",
           error?.message ?? "Strata could not complete the request.",
           error?.retryable ?? response.status >= 500,
+          error?.retry_after_ms ?? retryAfterHeaderMs(response.headers),
         );
       }
       return value;
@@ -2955,6 +2957,7 @@ function parsePublicError(value: unknown): {
   code: string;
   message: string;
   retryable: boolean;
+  retry_after_ms?: number;
 } | undefined {
   if (!value || typeof value !== "object") return undefined;
   const error = (value as Record<string, unknown>).error;
@@ -2971,7 +2974,22 @@ function parsePublicError(value: unknown): {
     code: fields.code,
     message: fields.message,
     retryable: fields.retryable,
+    ...(typeof fields.retry_after_ms === "number"
+      && Number.isSafeInteger(fields.retry_after_ms)
+      && fields.retry_after_ms >= 0
+      ? { retry_after_ms: fields.retry_after_ms }
+      : {}),
   };
+}
+
+function retryAfterHeaderMs(headers: Headers): number | undefined {
+  const raw = headers.get("Retry-After")?.trim();
+  if (!raw) return undefined;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
+  const at = Date.parse(raw);
+  if (!Number.isFinite(at)) return undefined;
+  return Math.max(0, at - Date.now());
 }
 
 export async function validateOrderAuthorization(

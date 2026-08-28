@@ -4,9 +4,31 @@ import { resolve } from "node:path";
 import test from "node:test";
 import {
   StrataClient,
+  StrataApiError,
   StrataContractError,
   type QuoteResponse,
 } from "../src/index.js";
+
+test("API errors preserve the server's exact Retry-After delay", async () => {
+  const client = new StrataClient({
+    apiBase: "https://example.test",
+    fetch: async () => Response.json({
+      schema_version: 1,
+      contract_version: "1.1",
+      error: {
+        code: "rate_limited",
+        message: "Retry later.",
+        retryable: true,
+      },
+    }, { status: 429, headers: { "Retry-After": "2" } }),
+  });
+  await assert.rejects(
+    client.capabilities(),
+    (error: unknown) => error instanceof StrataApiError
+      && error.code === "rate_limited"
+      && error.retryAfterMs === 2_000,
+  );
+});
 
 async function fixture(name: string): Promise<Record<string, unknown>> {
   const candidates = [

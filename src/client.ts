@@ -38,13 +38,21 @@ export class StrataApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly retryable: boolean;
+  readonly retryAfterMs?: number;
 
-  constructor(status: number, code: string, message: string, retryable: boolean) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    retryable: boolean,
+    retryAfterMs?: number,
+  ) {
     super(message);
     this.name = "StrataApiError";
     this.status = status;
     this.code = code;
     this.retryable = retryable;
+    if (retryAfterMs !== undefined) this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -350,6 +358,7 @@ export class StrataClient {
           publicError?.error.code ?? "request_failed",
           publicError?.error.message ?? "Strata could not complete the request.",
           publicError?.error.retryable ?? response.status >= 500,
+          publicError?.error.retry_after_ms ?? retryAfterHeaderMs(response.headers),
         );
       }
       return body;
@@ -363,6 +372,16 @@ export class StrataClient {
       clearTimeout(timeout);
     }
   }
+}
+
+function retryAfterHeaderMs(headers: Headers): number | undefined {
+  const raw = headers.get("Retry-After")?.trim();
+  if (!raw) return undefined;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
+  const at = Date.parse(raw);
+  if (!Number.isFinite(at)) return undefined;
+  return Math.max(0, at - Date.now());
 }
 
 function validOperationPath(path: string): boolean {

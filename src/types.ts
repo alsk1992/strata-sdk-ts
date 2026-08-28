@@ -289,6 +289,8 @@ export interface ErrorDetail {
   code: string;
   message: string;
   retryable: boolean;
+  /** Exact delay supplied by Strata for a retryable request, when available. */
+  retry_after_ms?: number;
 }
 
 export interface ErrorResponse {
