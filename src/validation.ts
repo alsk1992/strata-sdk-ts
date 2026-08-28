@@ -526,7 +526,9 @@ export function errorResponse(value: unknown): ErrorResponse | null {
     exactKeys(response, ["schema_version", "contract_version", "error"], "error response");
     version(response);
     const detail = object(response.error, "error");
-    exactKeys(detail, ["code", "message", "retryable"], "error");
+    const detailKeys = ["code", "message", "retryable"];
+    if (detail.retry_after_ms !== undefined) detailKeys.push("retry_after_ms");
+    exactKeys(detail, detailKeys, "error");
     return {
       schema_version: CONTRACT_SCHEMA_VERSION,
       contract_version: CONTRACT_VERSION,
@@ -534,6 +536,9 @@ export function errorResponse(value: unknown): ErrorResponse | null {
         code: string(detail.code, "error.code"),
         message: string(detail.message, "error.message"),
         retryable: boolean(detail.retryable, "error.retryable"),
+        ...(detail.retry_after_ms === undefined
+          ? {}
+          : { retry_after_ms: integer(detail.retry_after_ms, "error.retry_after_ms") }),
       },
     };
   } catch {
