@@ -2833,7 +2833,7 @@ test("rejects a changed nested replacement after batch authorization", async () 
   );
 });
 
-test("authenticates and correlates persistent order commands with explicit self-trade policy", async () => {
+test("authenticates persistent order commands without enabling self-trade cancellation by default", async () => {
   const capabilities = await v2Fixture("platform-capabilities");
   (capabilities.capabilities as Array<Record<string, unknown>>).push(
     {
@@ -2924,12 +2924,12 @@ test("authenticates and correlates persistent order commands with explicit self-
     orderType: "post_only",
     limitPriceAtoms: 150_000_000n,
     sizeAtoms: 2_000_000n,
-  }, "cancel_maker");
+  });
   await new Promise<void>((resolve) => setImmediate(resolve));
   const command = JSON.parse(sockets[0]!.sent[1]!) as Record<string, unknown>;
   assert.equal(command.type, "command");
   assert.equal(command.sequence, "1");
-  assert.equal((command.command as Record<string, unknown>).self_trade_prevention, "cancel_maker");
+  assert.equal((command.command as Record<string, unknown>).self_trade_prevention, "none");
   const response = await v2Fixture("order-challenge");
   sockets[0]!.emit([{
     type: "challenge_result",
@@ -2940,7 +2940,7 @@ test("authenticates and correlates persistent order commands with explicit self-
     sequence: "2",
     previous_sequence: "1",
     request_id: command.request_id,
-    self_trade_prevention: "cancel_maker",
+    self_trade_prevention: "none",
     prevented_order_ids: [],
     effective_request: {
       action: "place",
@@ -2957,7 +2957,7 @@ test("authenticates and correlates persistent order commands with explicit self-
     server_time_ms: 1786550400002,
   }]);
   const result = await resultPromise;
-  assert.equal(result.selfTradePrevention, "cancel_maker");
+  assert.equal(result.selfTradePrevention, "none");
   assert.equal(result.response.challenge_id, "oc_11111111111111111111111111111111");
   assert.equal(JSON.stringify(command).includes("venue"), false);
 

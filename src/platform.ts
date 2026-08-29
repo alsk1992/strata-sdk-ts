@@ -1445,6 +1445,7 @@ export interface PlatformOrderStatusResponse {
 }
 
 export type PlatformSelfTradePrevention =
+  | "none"
   | "cancel_taker"
   | "cancel_maker"
   | "cancel_both"

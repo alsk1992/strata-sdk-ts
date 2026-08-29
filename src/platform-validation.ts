@@ -128,7 +128,7 @@ const FILL_SETTLEMENT_STATES = ["pending", "confirmed", "failed"] as const;
 const ORDER_ACTIONS = ["place", "cancel", "cancel_all", "replace", "batch"] as const;
 const ORDER_CONTROL_STATUSES = ["submitting", "submitted", "failed"] as const;
 const SELF_TRADE_PREVENTION = [
-  "cancel_taker", "cancel_maker", "cancel_both", "skip_own_liquidity",
+  "none", "cancel_taker", "cancel_maker", "cancel_both", "skip_own_liquidity",
 ] as const;
 const DEAD_MAN_STATUSES = [
   "armed", "triggering", "triggered", "disarmed", "expired", "failed",
