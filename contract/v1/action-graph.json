@@ -325,7 +325,7 @@
     {
       "id": "open_order_command_stream",
       "kind": "prepare",
-      "summary": "Authenticate one persistent sequenced order channel for low-latency commands, explicit self-trade policy, and pushed confirmation.",
+      "summary": "Authenticate one persistent sequenced order channel for low-latency commands, optional self-trade cancellation, and pushed confirmation.",
       "required_capabilities": [
         "orders.prepare",
         "orders.submit"
@@ -488,7 +488,7 @@
     {
       "from": "open_order_command_stream",
       "to": "request_order_challenge",
-      "condition": "signed socket authentication succeeds and an explicit self-trade prevention policy is selected"
+      "condition": "signed socket authentication succeeds; self-trade cancellation remains off unless the owner explicitly selects a policy"
     },
     {
       "from": "open_order_command_stream",

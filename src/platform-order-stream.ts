@@ -57,7 +57,7 @@ export interface PlatformOrderChallengeResult {
 
 export interface PlatformOrderCommandExecuteInput {
   readonly operation: PlatformOrderExecuteOperation;
-  /** Defaults to cancel_taker, the safest policy for a newly arriving command. */
+  /** Optional. Omitted orders use `none`; cancellation policies are opt-in. */
   readonly selfTradePrevention?: PlatformSelfTradePrevention;
   readonly idempotencyKey?: string;
   /**
@@ -421,7 +421,7 @@ export function connectPlatformOrderCommands(
 
   const challenge = async (
     operation: PlatformOrderExecuteOperation,
-    selfTradePrevention: PlatformSelfTradePrevention = "cancel_taker",
+    selfTradePrevention: PlatformSelfTradePrevention = "none",
   ): Promise<PlatformOrderChallengeResult> => {
     const event = await command<Extract<PlatformOrderCommandEvent, { type: "challenge_result" }>>(
       {
@@ -814,7 +814,7 @@ function assertPreparedBinding(
 }
 
 function checkedSelfTradePrevention(value: string): PlatformSelfTradePrevention {
-  if (value !== "cancel_taker" && value !== "cancel_maker"
+  if (value !== "none" && value !== "cancel_taker" && value !== "cancel_maker"
       && value !== "cancel_both" && value !== "skip_own_liquidity") {
     throw new TypeError("selfTradePrevention is invalid");
   }

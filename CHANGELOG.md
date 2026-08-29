@@ -3,6 +3,13 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.19
+
+- Default persistent order commands to `selfTradePrevention: "none"` instead
+  of silently activating `cancel_taker`.
+- Keep all four proactive cancellation policies available as explicit opt-ins
+  and validate the new `none` result mode.
+
 ## 0.2.18
 
 - Preserve the server's exact retry delay on `StrataApiError`, accepting both
