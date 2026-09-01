@@ -321,6 +321,13 @@
       ]
     },
     {
+      "id": "points",
+      "client_property": "points",
+      "capability_ids": [
+        "points.read"
+      ]
+    },
+    {
       "id": "rewards",
       "client_property": "rewards",
       "capability_ids": [
@@ -462,6 +469,10 @@
           "transport": "http",
           "method": "GET",
           "path": "/v2/markets/{market_id}/book"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_book"
         }
       ],
       "available": true
@@ -502,6 +513,10 @@
           "transport": "http",
           "method": "GET",
           "path": "/v2/markets/{market_id}/trades"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_trades"
         }
       ],
       "available": true
@@ -1438,6 +1453,24 @@
         {
           "transport": "mcp",
           "tool": "strata_market_making_current_submit"
+        }
+      ],
+      "available": true
+    },
+    {
+      "id": "points.read",
+      "capability_id": "points.read",
+      "kind": "read",
+      "summary": "Read the complete fleet-wide Points season, epoch, allocation rules, owner balance, and bounded standings in one request.",
+      "transports": [
+        {
+          "transport": "http",
+          "method": "GET",
+          "path": "/v2/points"
+        },
+        {
+          "transport": "mcp",
+          "tool": "strata_points"
         }
       ],
       "available": true
@@ -3030,8 +3063,17 @@
     },
     {
       "id": "platform_participation",
-      "entry_node": "read_rewards",
+      "entry_node": "read_points",
       "nodes": [
+        {
+          "id": "read_points",
+          "kind": "read",
+          "capability_id": "points.read",
+          "operation_ids": [
+            "points.read"
+          ],
+          "available": true
+        },
         {
           "id": "read_rewards",
           "kind": "read",
@@ -3084,6 +3126,16 @@
         }
       ],
       "edges": [
+        {
+          "from": "read_points",
+          "to": "read_rewards",
+          "condition": "a legacy integration explicitly requests the compatibility rewards projection"
+        },
+        {
+          "from": "read_points",
+          "to": "read_referrals",
+          "condition": "the owner wants referral state or cash-reward details"
+        },
         {
           "from": "read_rewards",
           "to": "read_referrals",

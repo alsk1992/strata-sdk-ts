@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://stratabook.app">Trade</a> ·
-  <a href="https://stratabook.org/docs/agent-sdks">Docs</a> ·
+  <a href="https://stratabook.app/docs/agent-sdks">Docs</a> ·
   <a href="https://www.npmjs.com/package/@stratabook/sdk">npm</a> ·
   <a href="https://github.com/alsk1992/strata-mcp">MCP</a>
 </p>
@@ -123,6 +123,22 @@ const swap = await platform.quotes.swap({
   maximumToleranceBps: 50,
 });
 ```
+
+## Fleet-wide Points in one read
+
+`points.read` is the preferred agent-facing Points source of truth. It combines
+the current Season/epoch, weekly budget and named lane weights, immutable owner
+balance and breakdown, rank, standings, and finalization time without forcing
+an agent to spend several requests.
+
+```ts
+const points = await platform.points.read({ walletAddress, limit: 25 });
+console.log(points.owner?.points, points.allocation_finalizes_after_ms);
+```
+
+Eligible activity across every live market is captured automatically. Public
+balances and ranks include closed immutable epochs only. `rewards.read` remains
+available for backwards compatibility.
 
 ## Book and market stream
 

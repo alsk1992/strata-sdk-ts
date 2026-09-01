@@ -82,6 +82,7 @@ Usage:
   strata vault-submission --preparation-id ID [--json]
   strata vault-delegate --wallet PUBKEY --session-public-key PUBKEY --action revoke [--json]
   strata vault-policy --wallet PUBKEY --mode blocked|restricted [--allowed-wallets PUBKEY,...] [--json]
+  strata points [--wallet PUBKEY] [--limit N] [--json]
   strata rewards [--wallet PUBKEY] [--limit N] [--json]
   strata referrals --wallet PUBKEY [--json]
   strata referral-link --wallet PUBKEY --code CODE [--authorization-signature HEX] [--json]
@@ -800,6 +801,35 @@ async function run(): Promise<void> {
       console.log(`  preparation: ${response.preparation_id}`);
       console.log(`  sponsored:   ${response.sponsored ? "yes — Strata pays the fee and rent" : "no — the owner wallet pays"}`);
       console.log("  next:        verify the exact access policy, then owner-sign and `strata vault-submit`");
+    }
+    return;
+  }
+
+  if (parsed.command === "points") {
+    const platform = new StrataPlatformClient({
+      apiBase: value(parsed.flags, "api-base", DEFAULT_API_BASE),
+      timeoutMs,
+    });
+    const walletFlag = parsed.flags.get("wallet");
+    const response = await platform.points.read({
+      ...(typeof walletFlag === "string" ? { walletAddress: walletFlag } : {}),
+      limit: Number(value(parsed.flags, "limit", "25")),
+    });
+    if (json) console.log(JSON.stringify(response, null, 2));
+    else {
+      console.log(`Strata Points · ${response.season} · epoch ${response.epoch_index}`);
+      console.log(`  scope:     all live markets`);
+      console.log(`  budget:    ${response.weekly_points_budget} Points/week`);
+      console.log(`  weights:   volume ${response.weights_bps.volume} · maker ${response.weights_bps.maker} · bugs ${response.weights_bps.bugs} · referrals ${response.weights_bps.referrals} bps`);
+      console.log(`  finalizes: ${new Date(response.allocation_finalizes_after_ms).toISOString()}`);
+      console.log(`  wallets:   ${response.total_wallets}`);
+      if (response.owner) {
+        console.log(`  owner:     ${response.owner.points} Points, rank ${response.owner.rank ?? "—"}`);
+        console.log(`             volume ${response.owner.volume_points} · maker ${response.owner.maker_points} · bugs ${response.owner.bug_points} · referrals ${response.owner.referral_points}`);
+      }
+      for (const row of response.standings) {
+        console.log(`  #${row.rank} ${row.wallet_address} ${row.points}`);
+      }
     }
     return;
   }

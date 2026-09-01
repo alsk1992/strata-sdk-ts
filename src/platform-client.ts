@@ -39,6 +39,7 @@ import {
   platformReferralsResponse,
   platformReferralClaimResponse,
   platformReferralLinkResponse,
+  platformPointsResponse,
   platformRewardsResponse,
   platformTradesResponse,
   platformTwapChallengeResponse,
@@ -168,6 +169,7 @@ import type {
   PlatformPortfolioHistoryRange,
   PlatformPortfolioHistoryResponse,
   PlatformPortfolioResponse,
+  PlatformPointsResponse,
   PlatformReferralsResponse,
   PlatformReferralClaimInput,
   PlatformReferralClaimResponse,
@@ -510,6 +512,13 @@ export interface PlatformRewardsRequest {
   readonly limit?: number;
 }
 
+export type PlatformPointsRequest = PlatformRewardsRequest;
+
+export interface PlatformPointsModule {
+  /** Complete fleet-wide Points program; preferred over the legacy rewards summary. */
+  read(request?: PlatformPointsRequest): Promise<PlatformPointsResponse>;
+}
+
 export interface PlatformRewardsModule {
   read(request?: PlatformRewardsRequest): Promise<PlatformRewardsResponse>;
 }
@@ -583,6 +592,7 @@ export class StrataPlatformClient {
   readonly marketMaking: PlatformMarketMakingModule;
   readonly vault: PlatformVaultModule;
   readonly orders: PlatformOrdersModule;
+  readonly points: PlatformPointsModule;
   readonly rewards: PlatformRewardsModule;
   readonly referrals: PlatformReferralsModule;
   readonly bugs: PlatformBugsModule;
@@ -717,6 +727,7 @@ export class StrataPlatformClient {
       submit: (request) => this.vaultSubmit(request),
       submission: (preparationId) => this.vaultSubmission(preparationId),
     };
+    this.points = { read: (request) => this.pointsRead(request) };
     this.rewards = { read: (request) => this.rewardsRead(request) };
     this.referrals = {
       linkAuthorizationPayload: (referralCode) => referralLinkAuthorizationPayload(referralCode),
@@ -1477,6 +1488,32 @@ export class StrataPlatformClient {
     }
     if (wallet === undefined && response.owner !== null) {
       throw new StrataContractError("unrequested private reward owner was returned");
+    }
+    return response;
+  }
+
+  private async pointsRead(
+    request: PlatformPointsRequest = {},
+  ): Promise<PlatformPointsResponse> {
+    await this.requireReadCapability("points.read", "http");
+    const query = new URLSearchParams();
+    const wallet = request.walletAddress === undefined
+      ? undefined
+      : canonicalPublicKey(request.walletAddress, "walletAddress");
+    if (wallet !== undefined) query.set("wallet_address", wallet);
+    if (request.limit !== undefined) {
+      if (!Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > 100) {
+        throw new TypeError("Points standings limit must be an integer between 1 and 100");
+      }
+      query.set("limit", String(request.limit));
+    }
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    const response = platformPointsResponse(await this.get(`/v2/points${suffix}`));
+    if (wallet !== undefined && response.owner?.wallet_address !== wallet) {
+      throw new StrataContractError("Points owner does not match request");
+    }
+    if (wallet === undefined && response.owner !== null) {
+      throw new StrataContractError("unrequested Points owner was returned");
     }
     return response;
   }

@@ -59,6 +59,10 @@ import {
   type PlatformOrderStatusResponse,
   type PlatformOrderSubmitResponse,
   type PlatformOwnerRewards,
+  type PlatformOwnerPoints,
+  type PlatformPointsResponse,
+  type PlatformPointsStanding,
+  type PlatformPointsWeightsBps,
   type PlatformPortfolioBalance,
   type PlatformPortfolioFill,
   type PlatformPortfolioOrder,
@@ -2021,6 +2025,155 @@ export function platformRewardsResponse(value: unknown): PlatformRewardsResponse
     contract_version: PLATFORM_CONTRACT_VERSION,
     server_time_ms: integer(response.server_time_ms, "server_time_ms"),
     season: string(response.season, "season"),
+    total_wallets: totalWallets,
+    owner,
+    standings,
+  };
+}
+
+function assertPointsBreakdown(
+  points: string,
+  volume: string,
+  maker: string,
+  bugs: string,
+  referrals: string,
+  field: string,
+): void {
+  if (BigInt(points) !== BigInt(volume) + BigInt(maker) + BigInt(bugs) + BigInt(referrals)) {
+    throw new Error(`${field} Points total does not match its lane breakdown`);
+  }
+}
+
+function pointsStanding(value: unknown, index: number): PlatformPointsStanding {
+  const field = `standings[${index}]`;
+  const standing = object(value, field);
+  exactKeys(standing, [
+    "rank", "wallet_address", "points", "volume_points", "maker_points",
+    "bug_points", "referral_points",
+  ], field);
+  const points = atomicString(standing.points, `${field}.points`);
+  const volume = atomicString(standing.volume_points, `${field}.volume_points`);
+  const maker = atomicString(standing.maker_points, `${field}.maker_points`);
+  const bugs = atomicString(standing.bug_points, `${field}.bug_points`);
+  const referrals = atomicString(standing.referral_points, `${field}.referral_points`);
+  assertPointsBreakdown(points, volume, maker, bugs, referrals, field);
+  return {
+    rank: integer(standing.rank, `${field}.rank`, 100_000_000),
+    wallet_address: walletAddress(standing.wallet_address, `${field}.wallet_address`),
+    points,
+    volume_points: volume,
+    maker_points: maker,
+    bug_points: bugs,
+    referral_points: referrals,
+  };
+}
+
+function ownerPoints(value: unknown): PlatformOwnerPoints {
+  const owner = object(value, "owner Points");
+  exactKeys(owner, [
+    "wallet_address", "rank", "points", "volume_points", "maker_points",
+    "bug_points", "referral_points",
+  ], "owner Points");
+  const points = atomicString(owner.points, "owner.points");
+  const volume = atomicString(owner.volume_points, "owner.volume_points");
+  const maker = atomicString(owner.maker_points, "owner.maker_points");
+  const bugs = atomicString(owner.bug_points, "owner.bug_points");
+  const referrals = atomicString(owner.referral_points, "owner.referral_points");
+  assertPointsBreakdown(points, volume, maker, bugs, referrals, "owner");
+  return {
+    wallet_address: walletAddress(owner.wallet_address),
+    rank: nullableInteger(owner.rank, "owner.rank"),
+    points,
+    volume_points: volume,
+    maker_points: maker,
+    bug_points: bugs,
+    referral_points: referrals,
+  };
+}
+
+function pointsWeights(value: unknown): PlatformPointsWeightsBps {
+  const weights = object(value, "weights_bps");
+  exactKeys(weights, ["volume", "maker", "bugs", "referrals"], "weights_bps");
+  const result = {
+    volume: integer(weights.volume, "weights_bps.volume", 10_000),
+    maker: integer(weights.maker, "weights_bps.maker", 10_000),
+    bugs: integer(weights.bugs, "weights_bps.bugs", 10_000),
+    referrals: integer(weights.referrals, "weights_bps.referrals", 10_000),
+  };
+  if (result.volume + result.maker + result.bugs + result.referrals !== 10_000) {
+    throw new Error("Points weights must total 10000 basis points");
+  }
+  return result;
+}
+
+export function platformPointsResponse(value: unknown): PlatformPointsResponse {
+  const response = object(value, "platform Points response");
+  exactKeys(response, [
+    "schema_version", "contract_version", "server_time_ms", "program_scope", "season",
+    "season_index", "season_start_ms", "genesis_ms", "genesis_epochs", "epoch_index",
+    "epoch_in_season", "epoch_start_ms", "epoch_end_ms", "allocation_finalizes_after_ms",
+    "balances_include_closed_epochs_only", "weekly_points_budget", "weights_bps",
+    "total_wallets", "owner", "standings",
+  ], "platform Points response");
+  version(response);
+  if (response.program_scope !== "all_live_markets") {
+    throw new Error("Points program_scope is unsupported");
+  }
+  if (response.balances_include_closed_epochs_only !== true) {
+    throw new Error("Points balances must contain closed epochs only");
+  }
+  if (!Array.isArray(response.standings) || response.standings.length > 100) {
+    throw new Error("Points standings must be a bounded array");
+  }
+  const standings = response.standings.map(pointsStanding);
+  unique(standings.map((standing) => standing.wallet_address), "Points wallets");
+  standings.forEach((standing, index) => {
+    if (standing.rank !== index + 1) throw new Error("Points standings rank is invalid");
+  });
+  const totalWallets = integer(response.total_wallets, "total_wallets", 100_000_000);
+  if (standings.length > totalWallets) throw new Error("Points standings exceed total wallets");
+  const owner = response.owner === null ? null : ownerPoints(response.owner);
+  if (owner?.rank !== null && owner?.rank !== undefined && owner.rank > totalWallets) {
+    throw new Error("Points owner rank exceeds total wallets");
+  }
+  const genesisMs = integer(response.genesis_ms, "genesis_ms");
+  const seasonStartMs = integer(response.season_start_ms, "season_start_ms");
+  const epochStartMs = integer(response.epoch_start_ms, "epoch_start_ms");
+  const epochEndMs = integer(response.epoch_end_ms, "epoch_end_ms");
+  const finalizesMs = integer(
+    response.allocation_finalizes_after_ms,
+    "allocation_finalizes_after_ms",
+  );
+  if (
+    genesisMs > seasonStartMs
+    || seasonStartMs > epochStartMs
+    || epochStartMs >= epochEndMs
+    || epochEndMs > finalizesMs
+  ) {
+    throw new Error("Points Season or epoch window is invalid");
+  }
+  return {
+    schema_version: PLATFORM_SCHEMA_VERSION,
+    contract_version: PLATFORM_CONTRACT_VERSION,
+    server_time_ms: integer(response.server_time_ms, "server_time_ms"),
+    program_scope: "all_live_markets",
+    season: string(response.season, "season"),
+    season_index: integer(response.season_index, "season_index"),
+    season_start_ms: seasonStartMs,
+    genesis_ms: genesisMs,
+    genesis_epochs: integer(response.genesis_epochs, "genesis_epochs"),
+    epoch_index: integer(response.epoch_index, "epoch_index"),
+    epoch_in_season: integer(response.epoch_in_season, "epoch_in_season"),
+    epoch_start_ms: epochStartMs,
+    epoch_end_ms: epochEndMs,
+    allocation_finalizes_after_ms: finalizesMs,
+    balances_include_closed_epochs_only: true,
+    weekly_points_budget: atomicString(
+      response.weekly_points_budget,
+      "weekly_points_budget",
+      false,
+    ),
+    weights_bps: pointsWeights(response.weights_bps),
     total_wallets: totalWallets,
     owner,
     standings,

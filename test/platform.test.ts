@@ -105,7 +105,8 @@ test("discovers the complete live-gated platform action graph", async () => {
 
   const result = await client.discovery.graph();
   assert.equal(result.entry_operation_id, "platform.capabilities.read");
-  assert.equal(result.operations.length, 70);
+  assert.equal(result.operations.length, 71);
+  assert.ok(result.operations.some((operation) => operation.id === "points.read"));
   assert.ok(result.operations.some((operation) => operation.id === "twap.place.submit"));
   assert.ok(result.operations.some((operation) => operation.id === "twap.cancel.submit"));
   assert.ok(result.operations.some((operation) => operation.id === "vault.relay"));
@@ -164,7 +165,7 @@ test("reads sealed product-level readiness through live discovery", async () => 
 
   const result = await client.discovery.status();
   assert.equal(result.status, "operational");
-  assert.equal(result.available_operations, 59);
+  assert.equal(result.available_operations, 60);
   assert.deepEqual(requests, ["/v2/capabilities", "/v2/status"]);
 });
 
@@ -492,6 +493,7 @@ test("reads typed portfolio and community state and submits only an externally s
       ["vault.policy.manage", "destructive", "vault:admin", "submit"],
       ["vault.pause", "destructive", "vault:admin", "submit"],
       ["vault.relay", "submit", "vault:write", "submit"],
+      ["points.read", "read", "rewards:read", "read"],
       ["rewards.read", "read", "rewards:read", "read"],
       ["referrals.read", "read", "rewards:read", "read"],
       ["referrals.link", "submit", "rewards:write", "submit"],
@@ -513,6 +515,7 @@ test("reads typed portfolio and community state and submits only an externally s
   const vaultPause = await v2Fixture("vault-pause-prepare");
   const vaultSubmit = await v2Fixture("vault-submit");
   let vaultSubmitRequest: Record<string, unknown> | undefined;
+  const points = await v2Fixture("points");
   const rewards = await v2Fixture("rewards");
   const referrals = await v2Fixture("referrals");
   const referralLink = await v2Fixture("referral-link");
@@ -570,6 +573,7 @@ test("reads typed portfolio and community state and submits only an externally s
       if (url.pathname === `/v2/vault/submissions/${vaultSubmit.preparation_id}`) {
         return Response.json({ ...vaultSubmit, status: "confirmed", updated_at_ms: 1786896005000 });
       }
+      if (url.pathname === "/v2/points") return Response.json(points);
       if (url.pathname === "/v2/rewards") return Response.json(rewards);
       if (url.pathname === "/v2/referrals/link" && init?.method === "POST") {
         linked = JSON.parse(String(init.body)) as Record<string, unknown>;
@@ -665,6 +669,7 @@ test("reads typed portfolio and community state and submits only an externally s
     }),
     /preparationId/,
   );
+  const pointsResult = await client.points.read({ walletAddress: wallet, limit: 2 });
   const rewardsResult = await client.rewards.read({ walletAddress: wallet, limit: 2 });
   const referralsResult = await client.referrals.read(wallet);
   const linkPayload = client.referrals.linkAuthorizationPayload(" STRATA1 ");
@@ -750,6 +755,10 @@ test("reads typed portfolio and community state and submits only an externally s
     },
   });
   assert.deepEqual(pauseRequest, { wallet_address: wallet, paused: true });
+  assert.equal(pointsResult.program_scope, "all_live_markets");
+  assert.equal(pointsResult.weekly_points_budget, "1000000");
+  assert.equal(pointsResult.owner?.wallet_address, wallet);
+  assert.equal(pointsResult.owner?.maker_points, "300000");
   assert.equal(rewardsResult.owner?.wallet_address, wallet);
   assert.equal(referralsResult.referral_code, "STRATA1");
   assert.equal(new TextDecoder().decode(linkPayload), "strata-referral:v1:STRATA1");
@@ -793,6 +802,7 @@ test("reads typed portfolio and community state and submits only an externally s
   assert.ok(requests.includes(
     `GET /v2/vault/status?wallet_address=${wallet}&session_public_key=9Uu7cLBgfMk233BAjMvTS8XJy6KbZK7oQ7NXuCTi3Fg2`,
   ));
+  assert.ok(requests.includes(`GET /v2/points?wallet_address=${wallet}&limit=2`));
   assert.ok(requests.includes(`GET /v2/rewards?wallet_address=${wallet}&limit=2`));
 });
 
