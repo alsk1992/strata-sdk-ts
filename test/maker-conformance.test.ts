@@ -8,7 +8,10 @@ import { fileURLToPath } from "node:url";
 
 import { base58Encode } from "../src/client.js";
 import { parseMakerConformanceArgs } from "../src/maker-conformance-cli.js";
-import { assertNativeMakerTransaction } from "../src/maker-conformance.js";
+import {
+  assertNativeMakerTransaction,
+  makerConformanceMcpUrl,
+} from "../src/maker-conformance.js";
 
 function compact(value: number): Uint8Array {
   assert.ok(value >= 0 && value < 128);
@@ -72,6 +75,31 @@ test("accepts only compact native-v0 maker envelopes without lookup tables", () 
   assert.throws(
     () => assertNativeMakerTransaction(native.base64, base58Encode(new Uint8Array(32).fill(8))),
     /unexpected signer layout/,
+  );
+});
+
+test("maker conformance always selects the canonical market-making profile", () => {
+  assert.equal(
+    makerConformanceMcpUrl("https://api.stratabook.app/mcp"),
+    "https://api.stratabook.app/mcp?profile=market_making",
+  );
+  assert.equal(
+    makerConformanceMcpUrl("https://api.stratabook.app/mcp?mode=simple"),
+    "https://api.stratabook.app/mcp?mode=simple&profile=market_making",
+  );
+  assert.equal(
+    makerConformanceMcpUrl("https://api.stratabook.app/mcp?profile=market_making"),
+    "https://api.stratabook.app/mcp?profile=market_making",
+  );
+  assert.throws(
+    () => makerConformanceMcpUrl("https://api.stratabook.app/mcp?profile=default"),
+    /profile must be market_making/,
+  );
+  assert.throws(
+    () => makerConformanceMcpUrl(
+      "https://api.stratabook.app/mcp?profile=market_making&profile=default",
+    ),
+    /profile must be market_making/,
   );
 });
 

@@ -3,6 +3,11 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.22
+
+- Make `strata-maker-conformance` select the hosted MCP's canonical
+  `market_making` profile and reject a conflicting caller-supplied profile.
+
 ## 0.2.21
 
 - Coordinated version-parity release for the generated Agent Harness 1.2 and

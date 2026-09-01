@@ -25,6 +25,7 @@ const DEFAULT_MAKER_WALLET = "5Ji61Fbeb22Yntgv1hhHeSSLgdEdZchHeM1Tv1MjGhSL";
 const DEFAULT_SIZE = "0.01 SOL";
 const DEFAULT_SPREAD_BPS = 5;
 const DEFAULT_DURATION = "10m";
+const MAKER_MCP_PROFILE = "market_making";
 const REQUIRED_MCP_TOOLS = [
   "strata_market_making_status",
   "strata_market_making_reputation",
@@ -186,6 +187,20 @@ function normalizedUrl(value: string, name: string): string {
   }
   parsed.hash = "";
   return parsed.toString().replace(/\/$/, "");
+}
+
+/** Bind maker-only MCP probes to their canonical runtime profile. */
+export function makerConformanceMcpUrl(value: string): string {
+  const parsed = new URL(normalizedUrl(value, "mcpUrl"));
+  const profiles = parsed.searchParams.getAll("profile");
+  if (
+    profiles.length > 1
+    || (profiles.length === 1 && profiles[0] !== MAKER_MCP_PROFILE)
+  ) {
+    throw new TypeError(`mcpUrl profile must be ${MAKER_MCP_PROFILE}`);
+  }
+  parsed.searchParams.set("profile", MAKER_MCP_PROFILE);
+  return parsed.toString();
 }
 
 function productStatus(
@@ -391,7 +406,7 @@ function checkedCommon(options: MakerSafeConformanceOptions): {
   readonly fetchImpl: typeof globalThis.fetch;
 } {
   const apiBase = normalizedUrl(options.apiBase?.trim() || DEFAULT_API_BASE, "apiBase");
-  const mcpUrl = normalizedUrl(options.mcpUrl?.trim() || DEFAULT_MCP_URL, "mcpUrl");
+  const mcpUrl = makerConformanceMcpUrl(options.mcpUrl?.trim() || DEFAULT_MCP_URL);
   const market = options.market?.trim() || DEFAULT_MARKET;
   const makerWallet = options.makerWallet?.trim() || DEFAULT_MAKER_WALLET;
   const size = options.size?.trim() || DEFAULT_SIZE;
