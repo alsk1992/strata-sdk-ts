@@ -1080,6 +1080,57 @@ export interface PlatformRewardStanding {
   readonly points: AtomicString;
 }
 
+export interface PlatformPointsWeightsBps {
+  readonly volume: number;
+  readonly maker: number;
+  readonly bugs: number;
+  readonly referrals: number;
+}
+
+export interface PlatformPointsStanding {
+  readonly rank: number;
+  readonly wallet_address: string;
+  readonly points: AtomicString;
+  readonly volume_points: AtomicString;
+  readonly maker_points: AtomicString;
+  readonly bug_points: AtomicString;
+  readonly referral_points: AtomicString;
+}
+
+export interface PlatformOwnerPoints {
+  readonly wallet_address: string;
+  readonly rank: number | null;
+  readonly points: AtomicString;
+  readonly volume_points: AtomicString;
+  readonly maker_points: AtomicString;
+  readonly bug_points: AtomicString;
+  readonly referral_points: AtomicString;
+}
+
+/** One rate-limit-efficient read of the fleet-wide immutable Points program. */
+export interface PlatformPointsResponse {
+  readonly schema_version: typeof PLATFORM_SCHEMA_VERSION;
+  readonly contract_version: typeof PLATFORM_CONTRACT_VERSION;
+  readonly server_time_ms: number;
+  readonly program_scope: "all_live_markets";
+  readonly season: string;
+  readonly season_index: number;
+  readonly season_start_ms: number;
+  readonly genesis_ms: number;
+  readonly genesis_epochs: number;
+  readonly epoch_index: number;
+  readonly epoch_in_season: number;
+  readonly epoch_start_ms: number;
+  readonly epoch_end_ms: number;
+  readonly allocation_finalizes_after_ms: number;
+  readonly balances_include_closed_epochs_only: true;
+  readonly weekly_points_budget: AtomicString;
+  readonly weights_bps: PlatformPointsWeightsBps;
+  readonly total_wallets: number;
+  readonly owner: PlatformOwnerPoints | null;
+  readonly standings: readonly PlatformPointsStanding[];
+}
+
 export interface PlatformOwnerRewards {
   readonly wallet_address: string;
   readonly rank: number | null;

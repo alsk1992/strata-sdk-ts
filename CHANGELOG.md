@@ -3,6 +3,17 @@
 All notable changes to the Strata SDKs (`@stratabook/sdk`, `@stratabook/mcp`,
 and the `strata-sdk` Rust crate) are recorded here. Versions move together.
 
+## 0.2.21
+
+- Coordinated version-parity release for the generated Agent Harness 1.2 and
+  MCP profile runtime. TypeScript client APIs are unchanged from 0.2.20.
+
+## 0.2.20
+
+- Add the strict `client.points.read()` API and `points` terminal command for
+  fleet-wide Season, epoch, allocation, owner, and standings data.
+- Carry direct book and trade MCP transports in the generated action graph.
+
 ## 0.2.19
 
 - Default persistent order commands to `selfTradePrevention: "none"` instead
